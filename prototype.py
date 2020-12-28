@@ -1,22 +1,24 @@
-## a stand-in text file to provide an empty data/ directory
 import numpy as np
 import cv2
 import os
+import time
+import palettable
 
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
 
 # set confidence param
 confidence = 0.5
+threshold = 0.3
 
 # read darknet model for yolov3
 net = cv2.dnn.readNetFromDarknet(config, wt_file)
+
 
 # get layer names
 ln = net.getLayerNames()
 ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
-[i for i in net.getUnconnectedOutLayers()]
 
 # load labels from COCO dataset
 lbl_path = 'darknet/data/coco.names'
@@ -24,7 +26,7 @@ LABELS = open(lbl_path).read().strip().split('\n')
 
 # load image from data
 img = cv2.imread('data/2018-01-04_metro_transportation-investment-innovation.jpg')
-(W, H) = img.shape[:2]
+(H, W) = img.shape[:2]
 print(img.shape)
 
 # create a blob as input to the model
@@ -43,6 +45,7 @@ class_lst = []
 boxes = []
 confidences = []
 
+start = time.time()
 for output in layerOutputs:
     for detection in output:
         # do not consider the first five values as these correspond to 
@@ -55,7 +58,7 @@ for output in layerOutputs:
         conf = scores[class_id]
 
         if conf >= confidence:
-            # scale the predictions back to the original size of e
+            # scale the predictions back to the original size of image
             box = detection[0:4] * np.array([W,H]*2) 
             (cX, cY, width, height) = box.astype(int)
 
@@ -64,16 +67,48 @@ for output in layerOutputs:
             y = int(cY - (height / 2))
 
             #update list
-            boxes.append([x, y, width, height])
+            boxes.append([int(i) for i in [x, y, width, height]])
             class_lst.append(class_id)
-            confidences.append(conf)
+            confidences.append(float(conf))
 
+end = time.time()
 
 
 lbls = [LABELS[i] for i in class_lst]
 print(lbls)
 
+print('total processing time is ', end - start, 'seconds')
 
-        
+#apply non maximum suppression which outputs the final predictions 
+idx = cv2.dnn.NMSBoxes(boxes, confidences, confidence, threshold).flatten()
+
+# drawing bounding boxes to the original image and corresponding confidence score
+color = (255, 0, 0) #blue for now
+thickness = 2 
+
+for i in idx:
+    start_coord = tuple(boxes[i][:2])
+    w, h = boxes[i][2:]
+    end_coord = start_coord[0] + w, start_coord[1] + h
+    lbl = lbls[i]
+    conf = confidences[i]
+
+# text to be included to the output image
+    txt = 
+    img = cv2.rectangle(img, start_coord, end_coord, color, thickness)
+
+# write the output to a new image
+cv2.imwrite('tmp_img_w_bb.jpg', img)
+
+
+
+
+
+
+
+
+
+
+
 
 
