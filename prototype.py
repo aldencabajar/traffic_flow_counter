@@ -83,32 +83,23 @@ print('total processing time is ', end - start, 'seconds')
 idx = cv2.dnn.NMSBoxes(boxes, confidences, confidence, threshold).flatten()
 
 # drawing bounding boxes to the original image and corresponding confidence score
-color = (255, 0, 0) #blue for now
-thickness = 2 
+thickness = 3 
+colors = palettable.cartocolors.qualitative.Bold_5.colors
+unique_labels = list(set([lbls[i] for i in idx]))
+color_lbl_dict = {unique_labels[i] : colors[i] for i in range(len(unique_labels))}
 
 for i in idx:
     start_coord = tuple(boxes[i][:2])
     w, h = boxes[i][2:]
     end_coord = start_coord[0] + w, start_coord[1] + h
-    lbl = lbls[i]
     conf = confidences[i]
+    color = color_lbl_dict[lbls[i]] 
 
 # text to be included to the output image
-    txt = 
+    txt = '{} ({})'.format(lbls[i], round(conf,3))
     img = cv2.rectangle(img, start_coord, end_coord, color, thickness)
-
+    img = cv2.putText(img, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
+        
 # write the output to a new image
 cv2.imwrite('tmp_img_w_bb.jpg', img)
-
-
-
-
-
-
-
-
-
-
-
-
 
