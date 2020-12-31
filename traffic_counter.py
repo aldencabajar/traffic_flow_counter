@@ -4,6 +4,7 @@ import os
 import time
 import sys
 import palettable
+import tqdm
 
 # set parameters 
 confidence = 0.5
@@ -11,9 +12,9 @@ threshold = 0.3
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
 video_file ='data/4K Road traffic video for object detection and tracking - free download now!.mp4'  
-out_video_file = 'annotated.'
+out_video_file = 'annotated.avi'
 
-FRAME_RATE = 0.5 # there is really no need of getting each and every frame
+FRAME_RATE = 5 # there is really no need of getting each and every frame
 
 # load labels from COCO dataset
 lbl_path = 'darknet/data/coco.names'
@@ -43,7 +44,7 @@ def ForwardPassOutput(frame, threshold = 0.5):
 
     for output in layerOutputs:
         for detection in output:
-            # do not consider the first five values as these correspond to 
+            # do not consider the frst five values as these correspond to 
             # the x-y coords of the center, width and height of the bounding box,
             # and the objectness score
             scores = detection[5:]
@@ -99,40 +100,34 @@ try:
 except:
     print('We cannot determine number of frames and FPS!')
 
-grab = False
+grab = True 
 counter = 0
+num_frames_processed = 500 
+writer = None
 
-while grab:
+start = time.time()
+pbar = tqdm.tqdm(total = 100)
+
+while grab & (counter < 500):
     (grab, frame) = cap.read()
     H, W = frame.shape[:2]
     if writer is None:
-        fourccc = cv2.VideoWriter_fourcc(*'MJPG')
-        writer = cv2.VideoWriter(out_video_file, fourcc, fps, ) 
+        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+        writer = cv2.VideoWriter(out_video_file, fourcc, fps,  (W, H), True) 
 
-
-
-    if ((counter + 1) % int(fps // FRAME_RATE):  
+    if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
         labels, boxes, confidences = ForwardPassOutput(frame) 
         frame = drawBoxes(frame, labels, boxes, confidences) 
-
-    writer.write(frame)
     counter += 1
+    pbar.update(100/num_frames_processed)
+    writer.write(frame)
 
+writer.release()
+pbar.close()
+cap.release()
 
-
-
-
-start = time.time()
-labels, boxes, confidences = ForwardPassOutput(frame)
 end = time.time()
 
-
-
-frame.shape
-
-
-cv2.imwrite('tmp.jpg', annotated)
-
-print('total frame processing time =', round(end - start, 3), 's')
+print('total processing time =', round(end - start, 3), 's')
 
 
