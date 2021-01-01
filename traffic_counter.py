@@ -88,8 +88,96 @@ def drawBoxes(frame, labels, boxes, confidences):
 
     return frame
 
+def DetermineBoxCenter(box): 
+    cx = int(box[0] + (box[2]/2))
+    cy = int(box[1] + (box[3]/2))
+
+    return [cx, cy]
+
+def IsCarOnEdge(box, frame_shape = None, percent_win_edge = 10):
+    # consider vertical dimension for now
+    start_x, start_y = tuple(box[:2])
+    W, H = box[2:]
+
+    CarOnEdge = (start_y + H) >= (frame_shape[1] * (1 - percent_win_edge)/100) 
+
+    return CarOnEdge
 
 
+
+
+def TrackCarsInFrame(current_boxes, frame_shape = None,  prev_boxes_dict = None):
+    if prev_boxes_dict is None:
+        box_dict = {}
+        # since these are fresh car instances, add id numbers from 0 to n cars 
+        ids = np.arange(len(current_boxes))
+        for box, id in zip(current_boxes, ids):
+            box_dict[id] = {'box': box, 'center': DetermineBoxCenter(box)}
+        return box_dict
+
+    # create an array of box centers from previous box dicts
+    maxID = max(list(prev_boxes_dict.keys()))
+    curr_boxes_dict = dict(prev_boxes_dict)
+    prev_box_centers = np.array(
+        [v['center'] for k, v in prev_boxes_dict.items()])
+    current_box_centers = np.array(
+        [DetermineBoxCenter(box) for box in current_boxes])
+
+    dist = np.linalg.norm(
+        prev_box_centers[:, None, :] - current_box_centers[None, :, :], 
+        axis = 2)
+    #get the index with the minimum distance
+    min_idx = np.argmin(dist, axis = 1)
+
+    # get the corresponding distances
+    shp = min_idx.shape[0]
+    ind = np.arange(1, shp + 1) * shp - (shp - min_idx) 
+    min_dist =  np.take(dist, ind)
+
+    # if there are indices in the current frame with no matches from the previous, 
+    # assign new id and add to box dictionary
+    idx_new_centers = np.setdiff1d(
+        np.arange(current_box_centers.shape[0]), np.unique(min_idx))
+    new_centers = current_box_centers[idx_new_centers] 
+
+    for i, idx in enumerate(idx_new_centers):
+        curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
+        'center': list(new_centers[i])}
+
+    
+    # remove centers that have boxes that are within 10% of video frame edge 
+    #CarsOnEdge =     
+    return curr_boxes_dict 
+
+
+
+def getFrames(video_file, num_frames = None):
+    cap = cv2.VideoCapture(video_file)
+    out_list = []
+
+    for i in range(num_frames):
+        _ , frame = cap.read()
+        labels, boxes, confidences = ForwardPassOutput(frame) 
+        out_list.append({
+            'boxes' : boxes,
+            'frame' : frame
+        })
+
+    return out_list
+
+frames_tmp = getFrames(video_file, 2)
+lbls = [', '.join([str(j) for  j in i[:2]]) for i in frames_tmp[1]['boxes']]
+img = drawBoxes(frames_tmp[1]['frame'], lbls , frames_tmp[1]['boxes'], [0.1]*8)
+img2 = drawBoxes(frames_tmp[0]['frame'], lbls , frames_tmp[0]['boxes'], [0.1]*8)
+cv2.imwrite('tmp.jpg', img)
+
+prev_box_dict= TrackCarsInFrame(frames_tmp[0]['boxes'])
+tmp = TrackCarsInFrame(frames_tmp[1]['boxes'], prev_box_dict)
+
+max(list(prev_box_dict.keys()))
+
+##### Main program #######
+# Initialize video stream 
 cap = cv2.VideoCapture(video_file)
 
 try:
