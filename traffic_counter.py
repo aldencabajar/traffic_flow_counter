@@ -8,14 +8,14 @@ import tqdm
 import copy
 
 # set parameters 
-confidence = 0.5
+confidence = 0.8
 threshold = 0.3
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
 video_file ='data/4K Road traffic video for object detection and tracking - free download now!.mp4'  
 out_video_file = 'annotated.avi'
 
-FRAME_RATE = 5 # there is really no need of getting each and every frame
+FRAME_RATE = 30 # there is really no need of getting each and every frame
 
 # load labels from COCO dataset
 lbl_path = 'darknet/data/coco.names'
@@ -27,6 +27,25 @@ net = cv2.dnn.readNetFromDarknet(config, wt_file)
 # get layer names
 ln = net.getLayerNames()
 ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+
+
+def getFrames(video_file, start, stop):
+    cap = cv2.VideoCapture(video_file)
+    out_list = []
+
+    for i in range(stop + 1):
+        _ , frame = cap.read()
+        if (i >= start) & (i <=stop):
+            labels, boxes, confidences = ForwardPassOutput(frame) 
+            out_list.append({
+                'boxes' : boxes,
+                'frame' : frame
+            })
+
+    cap.release()
+
+    return out_list
+
 
 
 def ForwardPassOutput(frame, threshold = 0.5):
@@ -83,7 +102,7 @@ def drawBoxes(frame, labels, boxes, confidences):
         end_coord = start_coord[0] + w, start_coord[1] + h
 
     # text to be included to the output image
-        txt = '{} ({})'.format(lbl, round(conf,3))
+        txt = '{} ({})'.format(', '.join([str(i) for i in DetermineBoxCenter(box)]), round(conf,3))
         frame = cv2.rectangle(frame, start_coord, end_coord, boxColor, boxThickness)
         frame = cv2.putText(frame, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 0.5, TextColor, 2)
 
@@ -98,7 +117,7 @@ def DetermineBoxCenter(box):
 def IsCarOnEdge(box, frame_shape = None, percent_win_edge = 10):
     # consider vertical dimension for now
     centers =  DetermineBoxCenter(box)
-    CarOnEdge = centers[1] >= (frame_shape[1] * (1 - percent_win_edge)/100) 
+    CarOnEdge = centers[1] >= (frame_shape[0] * (1 - percent_win_edge/100)) 
 
     return CarOnEdge
 
@@ -109,7 +128,7 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
         ids = np.arange(len(current_boxes))
         for box, id in zip(current_boxes, ids):
             box_dict[id] = {'box': box, 'center': DetermineBoxCenter(box)}
-        return box_dict
+        return box_dict, len(ids)
 
     # create an array of box centers from previous box dicts
     ids = list(prev_boxes_dict.keys())
@@ -126,16 +145,16 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
         axis = 2)
     #get the index with the minimum distance
     min_idx = np.argmin(dist, axis = 1)
-    shp = min_idx.shape[0]
-    ind = np.arange(1, shp + 1) * shp - (shp - min_idx) 
+    x, y = dist.shape
+    ind = np.arange(y, (x+1)*y, step = y) - (y - min_idx)
     min_dist =  np.take(dist, ind)
-
     idxs, counts = np.unique(min_idx, return_counts = True)
     collisions = np.in1d(min_idx, idxs[np.where(counts > 1)[0]])
 
+
     # detect indices with distances greater than minimum of 
     # the two dimensions
-    min_dim = [max(i[2:]) for i in current_boxes]
+    min_dim = [max(v['box'][2:]) for k, v in prev_boxes_dict.items()]
     grt_than = [min_dist[i] > j/2 for i, j in enumerate(min_dim)]
     ands = np.logical_not(np.logical_and(collisions, grt_than))
 
@@ -156,34 +175,38 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
         curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
         'center': list(new_centers[i])}
 
+    print(curr_boxes_dict)
     # remove centers that have boxes that are within 10% of video frame edge 
-    #CarsOnEdge =     
-    return curr_boxes_dict, grt_than, ands
+    CarsOnEdge = []     
+    for k, v in curr_boxes_dict.items():
+        if IsCarOnEdge(v['box'], frame_shape, 35): 
+           CarsOnEdge.append(k) 
+           
+    print(CarsOnEdge)
+    print(current_box_centers)
+    for key in CarsOnEdge:
+        del curr_boxes_dict[key]
+
+    return curr_boxes_dict, idx_new_centers.shape[0]
     
 
 
-def getFrames(video_file, num_frames = None):
-    cap = cv2.VideoCapture(video_file)
-    out_list = []
-
-    for i in range(num_frames):
-        _ , frame = cap.read()
-        labels, boxes, confidences = ForwardPassOutput(frame) 
-        out_list.append({
-            'boxes' : boxes,
-            'frame' : frame
-        })
-
-    return out_list
-
-frames_tmp = getFrames(video_file, 2)
-lbls = [', '.join([str(j) for  j in i[:2]]) for i in frames_tmp[1]['boxes']]
+frames_tmp = getFrames(video_file, 48, 49)
+lbls = [', '.join([str(j) for  j in DetermineBoxCenter(i)]) for i in frames_tmp[1]['boxes']]
 img = drawBoxes(frames_tmp[1]['frame'], lbls , frames_tmp[1]['boxes'], [0.1]*8)
 img2 = drawBoxes(frames_tmp[0]['frame'], lbls , frames_tmp[0]['boxes'], [0.1]*8)
-cv2.imwrite('tmp.jpg', img)
+cv2.imwrite('tmp.jpg', img2)
 
-prev_box_dict= TrackCarsInFrame(frames_tmp[0]['boxes'])
-tmp = TrackCarsInFrame(frames_tmp[1]['boxes'], prev_boxes_dict= prev_box_dict)
+cv2.imwrite('tmp2.jpg', img)
+
+prev_box_dict, new_car_count = TrackCarsInFrame(frames_tmp[0]['boxes'])
+tmp, new_car_count = TrackCarsInFrame(frames_tmp[1]['boxes'],
+                        frame_shape = frames_tmp[1]['frame'].shape,
+                         prev_boxes_dict= prev_box_dict)
+
+for k, v in tmp[0].items():
+    print(IsCarOnEdge(v['box']))
+
 
 print(prev_box_dict)
 print(tmp)
@@ -202,22 +225,37 @@ except:
 
 grab = True 
 counter = 0
-num_frames_processed = 500 
+num_frames_processed = 50 
 writer = None
 
 start = time.time()
 pbar = tqdm.tqdm(total = 100)
+previous_box_dict = None
+total_car_count = 0
 
-while grab & (counter < 500):
+box_dicts = []
+
+while grab & (counter < num_frames_processed):
     (grab, frame) = cap.read()
+
+    print('iteration', counter + 1)
     H, W = frame.shape[:2]
     if writer is None:
         fourcc = cv2.VideoWriter_fourcc(*'MJPG')
         writer = cv2.VideoWriter(out_video_file, fourcc, fps,  (W, H), True) 
 
     if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
-        labels, boxes, confidences = ForwardPassOutput(frame) 
-        frame = drawBoxes(frame, labels, boxes, confidences) 
+        labels, current_boxes, confidences = ForwardPassOutput(frame) 
+        frame = drawBoxes(frame, labels, current_boxes, confidences) 
+        previous_box_dict, new_car_count = TrackCarsInFrame(current_boxes, frame.shape, previous_box_dict) 
+        box_dicts.append(copy.deepcopy(previous_box_dict))
+
+        total_car_count += new_car_count
+        frame = cv2.putText(frame, '{} {}'.format('total car count:', str(total_car_count)), 
+        (40, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        frame = cv2.putText(frame, '{} {}'.format('current car count:', len(previous_box_dict)), 
+        (40, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
     counter += 1
     pbar.update(100/num_frames_processed)
     writer.write(frame)
@@ -230,5 +268,17 @@ end = time.time()
 
 print('total processing time =', round(end - start, 3), 's')
 
+IsCarOnEdge(current_boxes[-1], frame.shape, 20)
+total_car_count
+
+tmp= TrackCarsInFrame(current_boxes, frame.shape, previous_box_dict) 
+min_idx = np.argmin(tmp, axis = 1)
+x, y = tmp.shape
+ind = np.arange(y, (x+1)*y, step = y) - (y - min_idx)
+np.take(tmp, ind)
+tmp.flatten().shape
 
 
+for b in box_dicts:
+    print(11 in b.keys())
+        
