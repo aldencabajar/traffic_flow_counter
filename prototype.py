@@ -98,8 +98,8 @@ for i in idx:
 # text to be included to the output image
     txt = '{} ({})'.format(lbls[i], round(conf,3))
     img = cv2.rectangle(img, start_coord, end_coord, color, thickness)
-    img = cv2.putText(img, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
-        
+    img = cv2.putText(img, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1)
+
 # write the output to a new image
 cv2.imwrite('tmp_img_w_bb.jpg', img)
 
