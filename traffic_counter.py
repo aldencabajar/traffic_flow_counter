@@ -5,6 +5,7 @@ import time
 import sys
 import palettable
 import tqdm
+import copy
 
 # set parameters 
 confidence = 0.5
@@ -96,17 +97,12 @@ def DetermineBoxCenter(box):
 
 def IsCarOnEdge(box, frame_shape = None, percent_win_edge = 10):
     # consider vertical dimension for now
-    start_x, start_y = tuple(box[:2])
-    W, H = box[2:]
-
-    CarOnEdge = (start_y + H) >= (frame_shape[1] * (1 - percent_win_edge)/100) 
+    centers =  DetermineBoxCenter(box)
+    CarOnEdge = centers[1] >= (frame_shape[1] * (1 - percent_win_edge)/100) 
 
     return CarOnEdge
 
-
-
-
-def TrackCarsInFrame(current_boxes, frame_shape = None,  prev_boxes_dict = None):
+def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
     if prev_boxes_dict is None:
         box_dict = {}
         # since these are fresh car instances, add id numbers from 0 to n cars 
@@ -116,23 +112,39 @@ def TrackCarsInFrame(current_boxes, frame_shape = None,  prev_boxes_dict = None)
         return box_dict
 
     # create an array of box centers from previous box dicts
-    maxID = max(list(prev_boxes_dict.keys()))
-    curr_boxes_dict = dict(prev_boxes_dict)
+    ids = list(prev_boxes_dict.keys())
+    maxID = max(ids)
+    curr_boxes_dict = copy.deepcopy(prev_boxes_dict)
     prev_box_centers = np.array(
         [v['center'] for k, v in prev_boxes_dict.items()])
     current_box_centers = np.array(
         [DetermineBoxCenter(box) for box in current_boxes])
 
+    # get the corresponding distances
     dist = np.linalg.norm(
         prev_box_centers[:, None, :] - current_box_centers[None, :, :], 
         axis = 2)
     #get the index with the minimum distance
     min_idx = np.argmin(dist, axis = 1)
-
-    # get the corresponding distances
     shp = min_idx.shape[0]
     ind = np.arange(1, shp + 1) * shp - (shp - min_idx) 
     min_dist =  np.take(dist, ind)
+
+    idxs, counts = np.unique(min_idx, return_counts = True)
+    collisions = np.in1d(min_idx, idxs[np.where(counts > 1)[0]])
+
+    # detect indices with distances greater than minimum of 
+    # the two dimensions
+    min_dim = [max(i[2:]) for i in current_boxes]
+    grt_than = [min_dist[i] > j/2 for i, j in enumerate(min_dim)]
+    ands = np.logical_not(np.logical_and(collisions, grt_than))
+
+    #return collisions, GreaterThanMaxDim, ands
+    for i, (cond_met, grt_than_cnd) in enumerate(zip(ands, grt_than)):
+        if cond_met and not grt_than_cnd:
+            curr_boxes_dict[ids[i]]['box'] = current_boxes[min_idx[i]]  
+            curr_boxes_dict[ids[i]]['center'] = current_box_centers[min_idx[i]]
+
 
     # if there are indices in the current frame with no matches from the previous, 
     # assign new id and add to box dictionary
@@ -144,11 +156,10 @@ def TrackCarsInFrame(current_boxes, frame_shape = None,  prev_boxes_dict = None)
         curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
         'center': list(new_centers[i])}
 
-    
     # remove centers that have boxes that are within 10% of video frame edge 
     #CarsOnEdge =     
-    return curr_boxes_dict 
-
+    return curr_boxes_dict, grt_than, ands
+    
 
 
 def getFrames(video_file, num_frames = None):
@@ -172,9 +183,10 @@ img2 = drawBoxes(frames_tmp[0]['frame'], lbls , frames_tmp[0]['boxes'], [0.1]*8)
 cv2.imwrite('tmp.jpg', img)
 
 prev_box_dict= TrackCarsInFrame(frames_tmp[0]['boxes'])
-tmp = TrackCarsInFrame(frames_tmp[1]['boxes'], prev_box_dict)
+tmp = TrackCarsInFrame(frames_tmp[1]['boxes'], prev_boxes_dict= prev_box_dict)
 
-max(list(prev_box_dict.keys()))
+print(prev_box_dict)
+print(tmp)
 
 ##### Main program #######
 # Initialize video stream 
@@ -217,5 +229,6 @@ cap.release()
 end = time.time()
 
 print('total processing time =', round(end - start, 3), 's')
+
 
 
