@@ -6,6 +6,7 @@ import sys
 import palettable
 import tqdm
 import copy
+import forward_yolo_net
 
 # set parameters 
 confidence = 0.8
@@ -28,87 +29,7 @@ net = cv2.dnn.readNetFromDarknet(config, wt_file)
 ln = net.getLayerNames()
 ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
-
-def getFrames(video_file, start, stop):
-    cap = cv2.VideoCapture(video_file)
-    out_list = []
-
-    for i in range(stop + 1):
-        _ , frame = cap.read()
-        if (i >= start) & (i <=stop):
-            labels, boxes, confidences = ForwardPassOutput(frame) 
-            out_list.append({
-                'boxes' : boxes,
-                'frame' : frame
-            })
-
-    cap.release()
-
-    return out_list
-
-
-
-def ForwardPassOutput(frame, threshold = 0.5):
-    # create a blob as input to the model
-    H, W = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame, 1/255., (416, 416), swapRB=True, crop = False)
-    net.setInput(blob)
-    layerOutputs = net.forward(ln)
-
-    # initialize lists for the class, width and height 
-    # and x,y coords for bounding box
-
-    class_lst = []
-    boxes = []
-    confidences = []
-
-    for output in layerOutputs:
-        for detection in output:
-            # do not consider the frst five values as these correspond to 
-            # the x-y coords of the center, width and height of the bounding box,
-            # and the objectness score
-            scores = detection[5:]
-
-            # get the index with the max score
-            class_id = np.argmax(scores)
-            conf = scores[class_id]
-
-            if conf >= confidence:
-                # scale the predictions back to the original size of image
-                box = detection[0:4] * np.array([W,H]*2) 
-                (cX, cY, width, height) = box.astype(int)
-
-                # get the top and left-most coordinate of the bounding box
-                x = int(cX - (width / 2))
-                y = int(cY - (height / 2))
-
-                #update list
-                boxes.append([int(i) for i in [x, y, width, height]])
-                class_lst.append(class_id)
-                confidences.append(float(conf))
-    #apply non maximum suppression which outputs the final predictions 
-    idx = cv2.dnn.NMSBoxes(boxes, confidences, confidence, threshold).flatten()
-    return [LABELS[class_lst[i]] for i in idx], [boxes[i] for i in idx], [confidences[i] for i in idx]
-
-def drawBoxes(frame, labels, boxes, confidences):
-    boxColor = (128, 255, 0) # very light green
-    TextColor = (255, 255, 255) # white
-    boxThickness = 3 
-    textThickness = 2
-
-    for lbl, box, conf in zip(labels, boxes, confidences):
-        start_coord = tuple(box[:2])
-        w, h = box[2:]
-        end_coord = start_coord[0] + w, start_coord[1] + h
-
-    # text to be included to the output image
-        txt = '{} ({})'.format(', '.join([str(i) for i in DetermineBoxCenter(box)]), round(conf,3))
-        frame = cv2.rectangle(frame, start_coord, end_coord, boxColor, boxThickness)
-        frame = cv2.putText(frame, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 0.5, TextColor, 2)
-
-    return frame
-
-def DetermineBoxCenter(box): 
+def DetermineBoxCenter(box):
     cx = int(box[0] + (box[2]/2))
     cy = int(box[1] + (box[3]/2))
 
@@ -120,6 +41,21 @@ def IsCarOnEdge(box, frame_shape = None, percent_win_edge = 10):
     CarOnEdge = centers[1] >= (frame_shape[0] * (1 - percent_win_edge/100)) 
 
     return CarOnEdge
+
+def GetFlattenedIndex(rowwise_idx, shape_of_matrix):
+    x, y = shape_of_matrix
+    ind = np.arange(y, (x+1)*y, step = y) - (y - rowwise_idx)
+    return ind
+
+
+def GetDistBetweenCenters(box_center1, box_center2): 
+    dist = np.linalg.norm(
+        box_center1[:, None, :] - box_center2[None, :, :], 
+        axis = 2)
+
+    return dist
+
+
 
 def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
     if prev_boxes_dict is None:
@@ -140,22 +76,23 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
         [DetermineBoxCenter(box) for box in current_boxes])
 
     # get the corresponding distances
-    dist = np.linalg.norm(
-        prev_box_centers[:, None, :] - current_box_centers[None, :, :], 
-        axis = 2)
+    dist = GetDistBetweenCenters(prev_box_centers, current_box_centers)
+
+    #return dist, [v['box'][-1] for _, v in prev_boxes_dict.items()]
+
+
     #get the index with the minimum distance
     min_idx = np.argmin(dist, axis = 1)
-    x, y = dist.shape
-    ind = np.arange(y, (x+1)*y, step = y) - (y - min_idx)
+    ind = GetFlattenedIndex(min_idx, dist.shape) 
     min_dist =  np.take(dist, ind)
     idxs, counts = np.unique(min_idx, return_counts = True)
     collisions = np.in1d(min_idx, idxs[np.where(counts > 1)[0]])
 
 
-    # detect indices with distances greater than minimum of 
+    # detect indices with distances greater than max of 
     # the two dimensions
-    min_dim = [max(v['box'][2:]) for k, v in prev_boxes_dict.items()]
-    grt_than = [min_dist[i] > j/2 for i, j in enumerate(min_dim)]
+    max_dim = [max(v['box'][2:]) for k, v in prev_boxes_dict.items()]
+    grt_than = [min_dist[i] > j/2 for i, j in enumerate(max_dim)]
     ands = np.logical_not(np.logical_and(collisions, grt_than))
 
     #return collisions, GreaterThanMaxDim, ands
@@ -167,13 +104,23 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
 
     # if there are indices in the current frame with no matches from the previous, 
     # assign new id and add to box dictionary
+    IsRealCar = None
     idx_new_centers = np.setdiff1d(
         np.arange(current_box_centers.shape[0]), np.unique(min_idx))
-    new_centers = current_box_centers[idx_new_centers] 
-
-    for i, idx in enumerate(idx_new_centers):
-        curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
-        'center': list(new_centers[i])}
+    
+    if idx_new_centers.shape[0] > 0:  
+        # check if these centers are real cars, by checking if the distance is less than 
+        # the maximum dimension
+        IsRealCar = []
+        for i in idx_new_centers:
+            dist_tmp = dist[:, i] 
+            isreal = np.all(np.greater(dist_tmp, np.array(max_dim)))
+            IsRealCar.append(isreal)
+        new_centers = current_box_centers[idx_new_centers[IsRealCar], :] 
+        if np.sum(IsRealCar) > 0:
+            for i, idx in enumerate(idx_new_centers):
+                curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
+                'center': list(new_centers[i])}
 
     print(curr_boxes_dict)
     # remove centers that have boxes that are within 10% of video frame edge 
@@ -186,13 +133,30 @@ def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
     print(current_box_centers)
     for key in CarsOnEdge:
         del curr_boxes_dict[key]
+    
+    num_new_cars = 0 if IsRealCar is None else np.sum(IsRealCar)
 
-    return curr_boxes_dict, idx_new_centers.shape[0]
+    return curr_boxes_dict, num_new_cars
     
 
 
-frames_tmp = getFrames(video_file, 48, 49)
-lbls = [', '.join([str(j) for  j in DetermineBoxCenter(i)]) for i in frames_tmp[1]['boxes']]
+frames_tmp = getFrames(video_file,18 , 19)
+_, current_boxes, __ = ForwardPassOutput(frames_tmp[1]['frame'])
+_, previous_boxes, __ = ForwardPassOutput(frames_tmp[0]['frame'])
+dist, height = TrackCarsInFrame(current_boxes, prev_boxes_dict = box_dicts[18], frame_shape=(720, 1080))
+tmp = TrackCarsInFrame(current_boxes, prev_boxes_dict = box_dicts[18], frame_shape=(720, 1080))
+min_idx = np.argmin(dist, axis = 1)
+idx = GetFlattenedIndex(min_idx, dist.shape)
+np.greater(np.take(dist, idx), np.array(height)/2)
+
+np.take(dist, idx)
+
+len(box_dicts[20])
+[DetermineBoxCenter(i) for i in current_boxes]
+
+
+
+lbls = [', '.join([str(j) for  j in DetermineBoxCenter(i)]) for i in frames_tmp[0]['boxes']]
 img = drawBoxes(frames_tmp[1]['frame'], lbls , frames_tmp[1]['boxes'], [0.1]*8)
 img2 = drawBoxes(frames_tmp[0]['frame'], lbls , frames_tmp[0]['boxes'], [0.1]*8)
 cv2.imwrite('tmp.jpg', img2)
@@ -251,12 +215,18 @@ while grab & (counter < num_frames_processed):
         box_dicts.append(copy.deepcopy(previous_box_dict))
 
         total_car_count += new_car_count
+        print('new car count = ', new_car_count)
         frame = cv2.putText(frame, '{} {}'.format('total car count:', str(total_car_count)), 
-        (40, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        (800, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+
         frame = cv2.putText(frame, '{} {}'.format('current car count:', len(previous_box_dict)), 
-        (40, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        (800, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
     counter += 1
+    # add frame number 
+    frame = cv2.putText(frame, 'frame: ' + str(counter), (800, 110),
+    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2 )
     pbar.update(100/num_frames_processed)
     writer.write(frame)
 
@@ -279,6 +249,4 @@ np.take(tmp, ind)
 tmp.flatten().shape
 
 
-for b in box_dicts:
-    print(11 in b.keys())
         
