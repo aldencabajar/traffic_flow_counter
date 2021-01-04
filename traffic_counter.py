@@ -29,6 +29,66 @@ net = cv2.dnn.readNetFromDarknet(config, wt_file)
 ln = net.getLayerNames()
 ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
+def ForwardPassOutput(frame, net, layers, confidence_threshold, labels,  nms_threshold = 0.5):
+    # create a blob as input to the model
+    H, W = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1/255., (416, 416), swapRB=True, crop = False)
+    net.setInput(blob)
+    layerOutputs = net.forward(layers)
+
+    # initialize lists for the class, width and height 
+    # and x,y coords for bounding box
+
+    class_lst = []
+    boxes = []
+    confidences = []
+
+    for output in layerOutputs:
+        for detection in output:
+            # do not consider the frst five values as these correspond to 
+            # the x-y coords of the center, width and height of the bounding box,
+            # and the objectness score
+            scores = detection[5:]
+
+            # get the index with the max score
+            class_id = np.argmax(scores)
+            conf = scores[class_id]
+
+            if conf >= confidence_threshold:
+                # scale the predictions back to the original size of image
+                box = detection[0:4] * np.array([W,H]*2) 
+                (cX, cY, width, height) = box.astype(int)
+
+                # get the top and left-most coordinate of the bounding box
+                x = int(cX - (width / 2))
+                y = int(cY - (height / 2))
+
+                #update list
+                boxes.append([int(i) for i in [x, y, width, height]])
+                class_lst.append(class_id)
+                confidences.append(float(conf))
+    #apply non maximum suppression which outputs the final predictions 
+    idx = cv2.dnn.NMSBoxes(boxes, confidences, confidence_threshold, nms_threshold).flatten()
+    return [labels[class_lst[i]] for i in idx], [boxes[i] for i in idx], [confidences[i] for i in idx]
+
+def drawBoxes(frame, labels, boxes, confidences):
+    boxColor = (128, 255, 0) # very light green
+    TextColor = (255, 255, 255) # white
+    boxThickness = 3 
+    textThickness = 2
+
+    for lbl, box, conf in zip(labels, boxes, confidences):
+        start_coord = tuple(box[:2])
+        w, h = box[2:]
+        end_coord = start_coord[0] + w, start_coord[1] + h
+
+    # text to be included to the output image
+        txt = '{} ({})'.format(', '.join([str(i) for i in DetermineBoxCenter(box)]), round(conf,3))
+        frame = cv2.rectangle(frame, start_coord, end_coord, boxColor, boxThickness)
+        frame = cv2.putText(frame, txt, start_coord, cv2.FONT_HERSHEY_SIMPLEX, 0.5, TextColor, 2)
+
+    return frame
+
 def DetermineBoxCenter(box):
     cx = int(box[0] + (box[2]/2))
     cy = int(box[1] + (box[3]/2))
@@ -55,6 +115,49 @@ def GetDistBetweenCenters(box_center1, box_center2):
 
     return dist
 
+
+def CheckPreviousFrames(current_boxes, previous_frames):
+    ### PROTOTYPE CODE FOR CHECKING PREVIOUS FRAMES 
+    current_box_centers = np.array(
+    [DetermineBoxCenter(box) for box in current_boxes])
+    ImmediatePrevious = dict(previous_frames[-1])
+
+    unmatchedIds = list(ImmediatePrevious.keys())
+    unmatched_idx = np.arange(current_box_centers.shape[0])
+
+    for frame in reversed(box_dicts[-11:-1]):
+
+        if (len(unmatched_idx) > 0) or (len(unmatchedIds) > 0):
+            tmp_ids = np.array([k for k, v in frame.items() if k in unmatchedIds])
+            prev_box_centers = np.array(
+            [v['center'] for k, v in frame.items() if k in unmatchedIds])
+
+            prev_box_centers = []
+            tmp_ids = []
+
+            for k, v in frame.items():
+                if k in unmatchedIds:
+                    prev_box_centers.append(v['center'])
+                    tmp_ids.append(k)
+            tmp_ids = np.array(tmp_ids)
+            prev_box_centers= np.array(prev_box_centers)
+
+            # get the corresponding distances
+            dist = GetDistBetweenCenters(prev_box_centers, current_box_centers[unmatched_idx])
+            #get the index with the minimum distance
+            min_idx = np.argmin(dist, axis = 1)
+            ind = GetFlattenedIndex(min_idx, dist.shape)
+            min_dist =  np.take(dist, ind)
+
+            # detect indices with distances greater than half of the max of 
+            # the two dimensions
+            max_dim = np.array([max(v['box'][2:]) for k, v in frame.items() if k in unmatchedIds]) / 2
+            grt_than = [min_dist[i] > j/2 for i, j in enumerate(max_dim)]
+            unmatchedIds = list(tmp_ids[np.where(grt_than)[0]])
+            unmatched_idx = np.in1d(unmatched_idx, np.unique(min_idx), invert = True)
+
+            print(unmatchedIds, unmatched_idx, dist)
+            
 
 
 def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None):
@@ -189,7 +292,7 @@ except:
 
 grab = True 
 counter = 0
-num_frames_processed = 50 
+num_frames_processed = 10 
 writer = None
 
 start = time.time()
@@ -238,15 +341,3 @@ end = time.time()
 
 print('total processing time =', round(end - start, 3), 's')
 
-IsCarOnEdge(current_boxes[-1], frame.shape, 20)
-total_car_count
-
-tmp= TrackCarsInFrame(current_boxes, frame.shape, previous_box_dict) 
-min_idx = np.argmin(tmp, axis = 1)
-x, y = tmp.shape
-ind = np.arange(y, (x+1)*y, step = y) - (y - min_idx)
-np.take(tmp, ind)
-tmp.flatten().shape
-
-
-        
