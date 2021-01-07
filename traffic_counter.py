@@ -13,7 +13,7 @@ threshold = 0.3
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
 video_file ='data/4K Road traffic video for object detection and tracking - free download now!.mp4'  
-out_video_file = 'annotated.avi'
+out_video_file = 'annotated2.avi'
 
 FRAME_RATE = 30 # there is really no need of getting each and every frame
 
@@ -120,12 +120,16 @@ def CheckPreviousFrames(current_boxes, previous_frames):
     ### PROTOTYPE CODE FOR CHECKING PREVIOUS FRAMES 
     ImmediatePrevious = copy.deepcopy(previous_frames[-1])
 
-    unmatchedIds = list(ImmediatePrevious.keys())
     unmatched_idx = np.arange(len(current_boxes))
+    unmatchedIds = []
+    for frame in previous_frames:
+        unmatchedIds += list(frame.keys())
+    unmatchedIds = list(set(unmatchedIds))
+        
 
     for frame in reversed(previous_frames):
 
-        if (len(unmatched_idx) > 0) or (len(unmatchedIds) > 0):
+        if len(unmatched_idx) > 0:
             tmp_ids = np.array([k for k, v in frame.items() if k in unmatchedIds])
             prev_box_centers = np.array(
             [v['center'] for k, v in frame.items() if k in unmatchedIds])
@@ -154,102 +158,99 @@ def CheckPreviousFrames(current_boxes, previous_frames):
             # detect indices with distances greater than half of the max of 
             # the two dimensions
             max_dim = np.array([max(v['box'][2:]) for k, v in frame.items() if k in unmatchedIds]) / 2
-            grt_than = [min_dist[i] > j/2 for i, j in enumerate(max_dim)]
+            grt_than = [min_dist[i] > j for i, j in enumerate(max_dim)]
 
             # update values in current box dict 
             for  i in np.where(np.logical_not(grt_than))[0]:
+                id_ = tmp_ids[i]
+                box = tmp_current_boxes[min_idx[i]]
+                center = current_box_centers[min_idx[i]]
+                if id_ not in list(ImmediatePrevious.keys()):
+                    ImmediatePrevious[id_] ={'box': box, 'center': center}
+                else:
                     ImmediatePrevious[tmp_ids[i]]['box'] = tmp_current_boxes[min_idx[i]]
                     ImmediatePrevious[tmp_ids[i]]['center'] = current_box_centers[min_idx[i]]
 
+            unmatchedIds = list(np.setdiff1d(np.array(unmatchedIds), 
+            tmp_ids[np.where(np.logical_not(grt_than))[0]])
+            )
+            unmatched_idx = np.setdiff1d(unmatched_idx, unmatched_idx[np.unique(min_idx)])
 
-
-            unmatchedIds = list(tmp_ids[np.where(grt_than)[0]])
-            unmatched_idx = unmatched_idx[np.in1d(unmatched_idx, np.unique(min_idx), invert = True)]
 
     return unmatched_idx, ImmediatePrevious            
+
 
 class CarsInFrameTracker:            
 
     def __init__(self, num_previous_frames, frame_shape):
         self.num_tracked_cars = 0 
-        self.previous_frames = []
+        self.frames = []
         self.frame_shape = frame_shape
         self.num_previous_frames = num_previous_frames
 
     def TrackCars(self, current_boxes): 
-        if len(self.previous_frames) == 0:
+        if len(self.frames) == 0:
+            box_dict = {}
             # since these are fresh car instances, add id numbers from 0 to n cars 
             ids = np.arange(len(current_boxes))
             for box, id in zip(current_boxes, ids):
                 box_dict[id] = {'box': box, 'center': DetermineBoxCenter(box)}
-            return box_dict, len(ids)
+            self.num_tracked_cars = len(ids)
+            self.frames.append(box_dict)
 
+            return self.num_tracked_cars
 
+        
+        ImmediatePrevious = copy.deepcopy(self.frames[-1])
 
+        ImmediatePreviousCenter = []
+        max_dim = []
 
+        for _, v in ImmediatePrevious.items():
+            ImmediatePreviousCenter.append(v['center'])
+            max_dim.append(max(v['box'][2:]))
 
-def TrackCarsInFrame(current_boxes, frame_shape = None, prev_boxes_dict = None, num_tracked_cars):
-    if len(prev_boxes_dict) == 0:
-        box_dict = {}
-        # since these are fresh car instances, add id numbers from 0 to n cars 
-        ids = np.arange(len(current_boxes))
-        for box, id in zip(current_boxes, ids):
-            box_dict[id] = {'box': box, 'center': DetermineBoxCenter(box)}
-        return box_dict, len(ids)
-
-    # create an array of box centers from previous box dicts
-    ImmediatePrevious = copy.deepcopy(prev_boxes_dict[-1])
-
-    ImmediatePreviousCenter = []
-    max_dim = []
-
-    for _, v in ImmediatePrevious.items():
-        ImmediatePreviousCenter.append(v['center'])
-        max_dim.append(max(v['box'][2:]))
-
-    ImmediatePreviousCenter = np.array(ImmediatePreviousCenter)
-    max_dim = np.array(max_dim)
-
-    ids = list(ImmediatePrevious.keys())
-    maxID = max(ids)
-    unmatched_idx, curr_boxes_dict = CheckPreviousFrames(current_boxes, prev_boxes_dict)
-
-
-    # if there are indices in the current frame with no matches from the previous frames, 
-    # assign new id and add to box dictionary
-
-    IsRealCar = None
-
-    
-    if unmatched_idx.shape[0] > 0:  
-        # check if these centers are real cars, by checking if the distance is greater than 
-        # the maximum dimension
+        ImmediatePreviousCenter = np.array(ImmediatePreviousCenter)
+        max_dim = np.array(max_dim)
+        unmatched_idx, curr_boxes_dict = CheckPreviousFrames(current_boxes, self.frames)
+        
+        # if there are indices in the current frame with no matches from the previous frames, 
+        # assign new id and add to box dictionary
         new_centers = []
-        for i in unmatched_idx:
-            center = np.array([DetermineBoxCenter(current_boxes[i])])
-            dist = GetDistBetweenCenters(ImmediatePreviousCenter, center)
-            # are all identified cars sufficiently far from the "new center"?
-            isreal = np.all(np.greater(dist, max_dim))
-            if isreal:
-                new_centers.append(center)
-        if len(new_centers) > 0 :
-            for i, idx in enumerate(idx_new_centers):
-                curr_boxes_dict[maxID + i + 1] = {'box': current_boxes[idx], 
-                'center': list(new_centers[i])}
 
-    # remove centers that have boxes that are within n% of video frame edge 
-    CarsOnEdge = []     
-    for k, v in curr_boxes_dict.items():
-        if IsCarOnEdge(v['box'], frame_shape, 35): 
-           CarsOnEdge.append(k) 
-           
-    for key in CarsOnEdge:
-        del curr_boxes_dict[key]
-    
-    num_new_cars = 0 if IsRealCar is None else np.sum(IsRealCar)
+        if unmatched_idx.shape[0] > 0:  
+            # check if these centers are real cars, by checking if the distance is greater than 
+            # the maximum dimension
+            for i in unmatched_idx:
 
-    return curr_boxes_dict, num_new_cars
-    
+                center = np.array([DetermineBoxCenter(current_boxes[i])])
+                dist = GetDistBetweenCenters(ImmediatePreviousCenter, center)
+                # are all identified cars sufficiently far from the "new center"?
+                isreal = np.all(np.greater(dist, max_dim))
+                if isreal:
+                    new_centers.append((i, center))
+            if len(new_centers) > 0:
+                for i, (idx, new_centers) in enumerate(new_centers):
+                    curr_boxes_dict[self.num_tracked_cars + i] = {'box': current_boxes[idx], 
+                    'center': list(new_centers[i])}
+
+        CarsOnEdge = []     
+        for k, v in curr_boxes_dict.items():
+            if IsCarOnEdge(v['box'], self.frame_shape, 35): 
+                CarsOnEdge.append(k) 
+            
+        for key in CarsOnEdge:
+            del curr_boxes_dict[key]
+        
+        num_new_cars = len(new_centers)
+        self.num_tracked_cars += num_new_cars
+        self.frames.append(curr_boxes_dict)
+
+        if len(self.frames) > self.num_previous_frames:
+            self.frames.pop(0)
+
+        return self.num_tracked_cars
+
 
 
 ##### Main program #######
@@ -266,15 +267,13 @@ except:
 
 grab = True 
 counter = 0
-num_frames_processed = 10 
-previous_frame_process = 10
+num_frames_processed = 50 
 writer = None
-
 start = time.time()
 pbar = tqdm.tqdm(total = 100)
-total_car_count = 0
 
-box_dicts = []
+tracker = CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
+
 
 while grab & (counter < num_frames_processed):
     (grab, frame) = cap.read()
@@ -288,20 +287,14 @@ while grab & (counter < num_frames_processed):
     if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
         labels, current_boxes, confidences = ForwardPassOutput(frame) 
         frame = drawBoxes(frame, labels, current_boxes, confidences) 
-        previous_box_dict, new_car_count = TrackCarsInFrame(current_boxes, frame.shape, box_dicts) 
-        box_dicts.append(copy.deepcopy(previous_box_dict))
+        new_car_count = tracker.TrackCars(current_boxes)
 
-        if len(box_dicts) > previous_frame_process:
-            box_dicts.pop(0)
-
-        total_car_count += new_car_count
         print('new car count = ', new_car_count)
-        frame = cv2.putText(frame, '{} {}'.format('total car count:', str(total_car_count)), 
+        frame = cv2.putText(frame, '{} {}'.format('total car count:', str(new_car_count)), 
         (800, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-
-        frame = cv2.putText(frame, '{} {}'.format('current car count:', len(previous_box_dict)), 
+        frame = cv2.putText(frame, '{} {}'.format('current car count:', len(tracker.frames[-1])), 
         (800, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    
 
     counter += 1
     # add frame number 
