@@ -8,7 +8,7 @@ import tqdm
 import copy
 
 # set parameters 
-confidence = 0.8
+confidence = 0.7
 threshold = 0.3
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
@@ -129,7 +129,7 @@ def CheckPreviousFrames(current_boxes, previous_frames):
 
     for frame in reversed(previous_frames):
 
-        if len(unmatched_idx) > 0:
+        if len(unmatched_idx) > 0 and len(unmatchedIds) > 0:
             tmp_ids = np.array([k for k, v in frame.items() if k in unmatchedIds])
             prev_box_centers = np.array(
             [v['center'] for k, v in frame.items() if k in unmatchedIds])
@@ -148,6 +148,11 @@ def CheckPreviousFrames(current_boxes, previous_frames):
             current_box_centers = np.array(
             [DetermineBoxCenter(box) for box in tmp_current_boxes])
 
+            # if there are no retrieved centers from the frame, skip over it since 
+            # it means that that frame does not contain the id
+            if len(prev_box_centers) == 0:
+                continue
+            
             # get the corresponding distances
             dist = GetDistBetweenCenters(prev_box_centers, current_box_centers)
             #get the index with the minimum distance
@@ -174,9 +179,8 @@ def CheckPreviousFrames(current_boxes, previous_frames):
             unmatchedIds = list(np.setdiff1d(np.array(unmatchedIds), 
             tmp_ids[np.where(np.logical_not(grt_than))[0]])
             )
-            unmatched_idx = np.setdiff1d(unmatched_idx, unmatched_idx[np.unique(min_idx)])
-
-
+            unmatched_idx = np.setdiff1d(unmatched_idx, 
+            unmatched_idx[np.unique(min_idx[np.logical_not(grt_than)])])
     return unmatched_idx, ImmediatePrevious            
 
 
@@ -222,13 +226,13 @@ class CarsInFrameTracker:
             # check if these centers are real cars, by checking if the distance is greater than 
             # the maximum dimension
             for i in unmatched_idx:
-
-                center = np.array([DetermineBoxCenter(current_boxes[i])])
-                dist = GetDistBetweenCenters(ImmediatePreviousCenter, center)
-                # are all identified cars sufficiently far from the "new center"?
-                isreal = np.all(np.greater(dist, max_dim))
-                if isreal:
-                    new_centers.append((i, center))
+                if not IsCarOnEdge(current_boxes[i], self.frame_shape, percent_win_edge = 35):
+                    center = np.array([DetermineBoxCenter(current_boxes[i])])
+                    dist = GetDistBetweenCenters(ImmediatePreviousCenter, center)
+                    # are all identified cars sufficiently far from the "new center"?
+                    isreal = np.all(np.greater(dist, max_dim))
+                    if isreal:
+                        new_centers.append((i, center))
             if len(new_centers) > 0:
                 for i, (idx, new_centers) in enumerate(new_centers):
                     curr_boxes_dict[self.num_tracked_cars + i] = {'box': current_boxes[idx], 
@@ -236,11 +240,12 @@ class CarsInFrameTracker:
 
         CarsOnEdge = []     
         for k, v in curr_boxes_dict.items():
-            if IsCarOnEdge(v['box'], self.frame_shape, 35): 
+            if IsCarOnEdge(v['box'], self.frame_shape, percent_win_edge = 35): 
                 CarsOnEdge.append(k) 
             
         for key in CarsOnEdge:
             del curr_boxes_dict[key]
+        
         
         num_new_cars = len(new_centers)
         self.num_tracked_cars += num_new_cars
@@ -252,62 +257,65 @@ class CarsInFrameTracker:
         return self.num_tracked_cars
 
 
+if __name__ == '__main__':
+    ##### Main program #######
+    # Initialize video stream 
+    cap = cv2.VideoCapture(video_file)
 
-##### Main program #######
-# Initialize video stream 
-cap = cv2.VideoCapture(video_file)
+    try:
+        num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS)) 
+        print('Total number of frames to be processed:', num_frames,
+        '\nFrame rate (frames per second):', fps)
+    except:
+        print('We cannot determine number of frames and FPS!')
 
-try:
-    num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) 
-    print('Total number of frames to be processed:', num_frames,
-    '\nFrame rate (frames per second):', fps)
-except:
-    print('We cannot determine number of frames and FPS!')
+    grab = True 
+    counter = 0
+    num_frames_processed = 200 
+    writer = None
+    start = time.time()
+    pbar = tqdm.tqdm(total = 100)
 
-grab = True 
-counter = 0
-num_frames_processed = 50 
-writer = None
-start = time.time()
-pbar = tqdm.tqdm(total = 100)
-
-tracker = CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
+    tracker = CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 
 
-while grab & (counter < num_frames_processed):
-    (grab, frame) = cap.read()
+    while grab & (counter < num_frames_processed):
+        (grab, frame) = cap.read()
 
-    print('iteration', counter + 1)
-    H, W = frame.shape[:2]
-    if writer is None:
-        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-        writer = cv2.VideoWriter(out_video_file, fourcc, fps,  (W, H), True) 
+        #print('iteration', counter + 1)
+        pbar.set_postfix({'iteration': counter + 1,
+        'number of cars': tracker.num_tracked_cars})
+        H, W = frame.shape[:2]
+        if writer is None:
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            writer = cv2.VideoWriter(out_video_file, fourcc, fps,  (W, H), True) 
 
-    if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
-        labels, current_boxes, confidences = ForwardPassOutput(frame) 
-        frame = drawBoxes(frame, labels, current_boxes, confidences) 
-        new_car_count = tracker.TrackCars(current_boxes)
+        if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
+            labels, current_boxes, confidences = ForwardPassOutput(frame) 
+            frame = drawBoxes(frame, labels, current_boxes, confidences) 
+            new_car_count = tracker.TrackCars(current_boxes)
 
-        print('new car count = ', new_car_count)
-        frame = cv2.putText(frame, '{} {}'.format('total car count:', str(new_car_count)), 
-        (800, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        frame = cv2.putText(frame, '{} {}'.format('current car count:', len(tracker.frames[-1])), 
-        (800, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-    
+            #print('new car count = ', new_car_count)
+            frame = cv2.putText(frame, '{} {}'.format('total car count:', str(new_car_count)), 
+            (800, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            frame = cv2.putText(frame, '{} {}'.format('current car count:', len(tracker.frames[-1])), 
+            (800, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
 
-    counter += 1
-    # add frame number 
-    frame = cv2.putText(frame, 'frame: ' + str(counter), (800, 110),
-    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2 )
-    pbar.update(100/num_frames_processed)
-    writer.write(frame)
+        counter += 1
+        # add frame number 
+        frame = cv2.putText(frame, 'frame: ' + str(counter), (800, 110),
+        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2 )
+        pbar.update(100/num_frames_processed)
+        
+        writer.write(frame)
 
-writer.release()
-pbar.close()
-cap.release()
+    writer.release()
+    pbar.close()
+    cap.release()
 
-end = time.time()
+    end = time.time()
 
-print('total processing time =', round(end - start, 3), 's')
+    print('total processing time =', round(end - start, 3), 's')
 
