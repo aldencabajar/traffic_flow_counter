@@ -160,21 +160,22 @@ def CheckPreviousFrames(current_boxes, previous_frames):
             ind = GetFlattenedIndex(min_idx, dist.shape)
             min_dist =  np.take(dist, ind)
 
-            # detect indices with distances greater than half of the max of 
+            # detect indices with distances greater than max of 
             # the two dimensions
-            max_dim = np.array([max(v['box'][2:]) for k, v in frame.items() if k in unmatchedIds]) / 2
+            max_dim = np.array([max(v['box'][2:]) for k, v in frame.items() if k in unmatchedIds])  / 2
             grt_than = [min_dist[i] > j for i, j in enumerate(max_dim)]
-
+            
+            
             # update values in current box dict 
             for  i in np.where(np.logical_not(grt_than))[0]:
                 id_ = tmp_ids[i]
                 box = tmp_current_boxes[min_idx[i]]
-                center = current_box_centers[min_idx[i]]
+                center = list(current_box_centers[min_idx[i]])
                 if id_ not in list(ImmediatePrevious.keys()):
                     ImmediatePrevious[id_] ={'box': box, 'center': center}
                 else:
-                    ImmediatePrevious[tmp_ids[i]]['box'] = tmp_current_boxes[min_idx[i]]
-                    ImmediatePrevious[tmp_ids[i]]['center'] = current_box_centers[min_idx[i]]
+                    ImmediatePrevious[tmp_ids[i]]['box'] = box
+                    ImmediatePrevious[tmp_ids[i]]['center'] = center
 
             unmatchedIds = list(np.setdiff1d(np.array(unmatchedIds), 
             tmp_ids[np.where(np.logical_not(grt_than))[0]])
@@ -215,7 +216,7 @@ class CarsInFrameTracker:
             max_dim.append(max(v['box'][2:]))
 
         ImmediatePreviousCenter = np.array(ImmediatePreviousCenter)
-        max_dim = np.array(max_dim)
+        max_dim = np.array(max_dim) / 2
         unmatched_idx, curr_boxes_dict = CheckPreviousFrames(current_boxes, self.frames)
         
         # if there are indices in the current frame with no matches from the previous frames, 
@@ -226,7 +227,7 @@ class CarsInFrameTracker:
             # check if these centers are real cars, by checking if the distance is greater than 
             # the maximum dimension
             for i in unmatched_idx:
-                if not IsCarOnEdge(current_boxes[i], self.frame_shape, percent_win_edge = 35):
+                if not IsCarOnEdge(current_boxes[i], self.frame_shape, percent_win_edge = 20):
                     center = np.array([DetermineBoxCenter(current_boxes[i])])
                     dist = GetDistBetweenCenters(ImmediatePreviousCenter, center)
                     # are all identified cars sufficiently far from the "new center"?
@@ -234,13 +235,14 @@ class CarsInFrameTracker:
                     if isreal:
                         new_centers.append((i, center))
             if len(new_centers) > 0:
-                for i, (idx, new_centers) in enumerate(new_centers):
+                for i, (idx, nc) in enumerate(new_centers):
                     curr_boxes_dict[self.num_tracked_cars + i] = {'box': current_boxes[idx], 
-                    'center': list(new_centers[i])}
+                    'center': list(nc.flatten())}
 
+ 
         CarsOnEdge = []     
         for k, v in curr_boxes_dict.items():
-            if IsCarOnEdge(v['box'], self.frame_shape, percent_win_edge = 35): 
+            if IsCarOnEdge(v['box'], self.frame_shape, percent_win_edge = 20): 
                 CarsOnEdge.append(k) 
             
         for key in CarsOnEdge:
@@ -272,7 +274,7 @@ if __name__ == '__main__':
 
     grab = True 
     counter = 0
-    num_frames_processed = 200 
+    num_frames_processed = 500 
     writer = None
     start = time.time()
     pbar = tqdm.tqdm(total = 100)
