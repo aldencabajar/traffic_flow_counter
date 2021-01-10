@@ -7,68 +7,62 @@ import palettable
 import tqdm
 import copy
 
-# set parameters 
-confidence = 0.7
-threshold = 0.3
-config =  'darknet/cfg/yolov3.cfg'
-wt_file = 'data/yolov3.weights'
-video_file ='data/4K Road traffic video for object detection and tracking - free download now!.mp4'  
-out_video_file = 'annotated2.avi'
-
-FRAME_RATE = 30 # there is really no need of getting each and every frame
-
 # load labels from COCO dataset
-lbl_path = 'darknet/data/coco.names'
-LABELS = open(lbl_path).read().strip().split('\n')
+LABELS = open('darknet/data/coco.names').read().strip().split('\n')
 
-# read darknet model for yolov3
-net = cv2.dnn.readNetFromDarknet(config, wt_file)
+class ObjectDetector:
+    def __init__(self, weights, config, confidence, nms_threshold):
+        self.net = cv2.dnn.readNetFromDarknet(config, weights)
+        self.confidence = confidence
+        self.nms_threshold = nms_threshold 
 
-# get layer names
-ln = net.getLayerNames()
-ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+        # identify layers
+        ln = self.net.getLayerNames() 
+        self.ln = [ln[i[0] - 1] for i in self.net.getUnconnectedOutLayers()]
 
-def ForwardPassOutput(frame, threshold = 0.5):
-    # create a blob as input to the model
-    H, W = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame, 1/255., (416, 416), swapRB=True, crop = False)
-    net.setInput(blob)
-    layerOutputs = net.forward(ln)
+    def ForwardPassOutput(self, frame):
+        # create a blob as input to the model
+        H, W = frame.shape[:2]
+        blob = cv2.dnn.blobFromImage(frame, 1/255., (416, 416), swapRB=True, crop = False)
 
-    # initialize lists for the class, width and height 
-    # and x,y coords for bounding box
+        # predict using model
+        self.net.setInput(blob)
+        layerOutputs = self.net.forward(self.ln)
 
-    class_lst = []
-    boxes = []
-    confidences = []
+        # initialize lists for the class, width and height 
+        # and x,y coords for bounding box
 
-    for output in layerOutputs:
-        for detection in output:
-            # do not consider the frst five values as these correspond to 
-            # the x-y coords of the center, width and height of the bounding box,
-            # and the objectness score
-            scores = detection[5:]
+        class_lst = []
+        boxes = []
+        confidences = []
 
-            # get the index with the max score
-            class_id = np.argmax(scores)
-            conf = scores[class_id]
+        for output in layerOutputs:
+            for detection in output:
+                # do not consider the frst five values as these correspond to 
+                # the x-y coords of the center, width and height of the bounding box,
+                # and the objectness score
+                scores = detection[5:]
 
-            if conf >= confidence:
-                # scale the predictions back to the original size of image
-                box = detection[0:4] * np.array([W,H]*2) 
-                (cX, cY, width, height) = box.astype(int)
+                # get the index with the max score
+                class_id = np.argmax(scores)
+                conf = scores[class_id]
 
-                # get the top and left-most coordinate of the bounding box
-                x = int(cX - (width / 2))
-                y = int(cY - (height / 2))
+                if conf >= self.confidence:
+                    # scale the predictions back to the original size of image
+                    box = detection[0:4] * np.array([W,H]*2) 
+                    (cX, cY, width, height) = box.astype(int)
 
-                #update list
-                boxes.append([int(i) for i in [x, y, width, height]])
-                class_lst.append(class_id)
-                confidences.append(float(conf))
-    #apply non maximum suppression which outputs the final predictions 
-    idx = cv2.dnn.NMSBoxes(boxes, confidences, confidence, threshold).flatten()
-    return [LABELS[class_lst[i]] for i in idx], [boxes[i] for i in idx], [confidences[i] for i in idx]
+                    # get the top and left-most coordinate of the bounding box
+                    x = int(cX - (width / 2))
+                    y = int(cY - (height / 2))
+
+                    #update list
+                    boxes.append([int(i) for i in [x, y, width, height]])
+                    class_lst.append(class_id)
+                    confidences.append(float(conf))
+        #apply non maximum suppression which outputs the final predictions 
+        idx = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence, self.nms_threshold).flatten()
+        return [LABELS[class_lst[i]] for i in idx], [boxes[i] for i in idx], [confidences[i] for i in idx]
 
 
 def drawBoxes(frame, labels, boxes, confidences):
@@ -193,6 +187,8 @@ class CarsInFrameTracker:
         self.frame_shape = frame_shape
         self.num_previous_frames = num_previous_frames
 
+        
+
     def TrackCars(self, current_boxes): 
         if len(self.frames) == 0:
             box_dict = {}
@@ -260,8 +256,15 @@ class CarsInFrameTracker:
 
 
 if __name__ == '__main__':
-    ##### Main program #######
+    ##### Main program for testing #######
     # Initialize video stream 
+    # set parameters 
+    config =  'darknet/cfg/yolov3.cfg'
+    wt_file = 'data/yolov3.weights'
+    video_file ='data/4K Road traffic video for object detection and tracking - free download now!.mp4'  
+    out_video_file = 'annotated_try.avi'
+    FRAME_RATE = 30 # there is really no need of getting each and every frame
+
     cap = cv2.VideoCapture(video_file)
 
     try:
@@ -279,7 +282,9 @@ if __name__ == '__main__':
     start = time.time()
     pbar = tqdm.tqdm(total = 100)
 
+    # Initialize objects
     tracker = CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
+    obj_detector = ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
 
 
     while grab & (counter < num_frames_processed):
@@ -294,7 +299,7 @@ if __name__ == '__main__':
             writer = cv2.VideoWriter(out_video_file, fourcc, fps,  (W, H), True) 
 
         if (((counter + 1) % int(fps // FRAME_RATE)) == 0) or (counter == 0):  
-            labels, current_boxes, confidences = ForwardPassOutput(frame) 
+            labels, current_boxes, confidences = obj_detector.ForwardPassOutput(frame)
             frame = drawBoxes(frame, labels, current_boxes, confidences) 
             new_car_count = tracker.TrackCars(current_boxes)
 
