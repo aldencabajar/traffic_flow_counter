@@ -16,7 +16,11 @@ def main():
     st.markdown('Upload a video file to track and count vehicles.')
     sidebar_options()
 
-    f = st.file_uploader('Upload Video file (mpeg format)')
+    upload = st.empty()
+    upload.beta_expander(label = '', expanded = True)
+
+    with upload:
+        f = st.file_uploader('Upload Video file (mpeg format)')
 
     # set network
     tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
@@ -27,6 +31,7 @@ def main():
     if f is not None:
         tfile  = tempfile.NamedTemporaryFile(delete = False)
         tfile.write(f.read())
+        upload.empty()
         vf = cv2.VideoCapture(tfile.name)
 
         try:
@@ -38,6 +43,7 @@ def main():
             print('We cannot determine number of frames and FPS!')
 
         frame_counter = 0
+        print(num_frames)
 
         new_car_count_txt = st.empty()
         fps_meas_txt = st.empty()
@@ -55,15 +61,15 @@ def main():
             labels, current_boxes, confidences = obj_detector.ForwardPassOutput(frame)
             frame = tc.drawBoxes(frame, labels, current_boxes, confidences) 
             new_car_count = tracker.TrackCars(current_boxes)
-            new_car_count_txt.text(f'Total car count: {new_car_count}')
+            new_car_count_txt.markdown(f'**Total car count:** {new_car_count}')
 
             end = time.time()
 
             frame_counter += 1
             fps_measurement = frame_counter/(end - start)
-            fps_meas_txt.text(f'Frames per second: {fps_measurement:.2f}')
+            fps_meas_txt.markdown(f'**Frames per second:** {fps_measurement:.2f}')
 
-            bar.progress(frame_counter/num_frames * 100)
+            bar.progress(frame_counter/num_frames)
 
 
             frm = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -72,6 +78,8 @@ def main():
 
 
 
+def loop_over_frames(video): 
+    pass
 
 
 
