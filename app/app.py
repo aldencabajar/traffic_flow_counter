@@ -9,7 +9,7 @@ import cv2
 import time
 
 config =  'darknet/cfg/yolov3.cfg'
-wt_file = 'data/yolov3.weights'
+wt_file = 'data/yolov3-tiny.weights'
 # set network
 tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
