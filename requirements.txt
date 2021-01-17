@@ -26,10 +26,6 @@ GitPython==3.1.12
 html5lib==1.0.1
 idna==2.8
 ipaddr==2.2.0
-ipykernel==5.4.3
-ipython==7.19.0
-ipython-genutils==0.2.0
-ipywidgets==7.6.3
 jedi==0.18.0
 Jinja2==2.11.2
 jsonschema==3.2.0
@@ -50,7 +46,6 @@ numpy==1.19.5
 opencv-python==4.5.1.48
 packaging==20.3
 palettable==3.3.0
-pandas==1.2.0
 pandocfilters==1.4.3
 parso==0.8.1
 pep517==0.8.2
