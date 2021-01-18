@@ -1,5 +1,5 @@
 build:
   docker:
-    web: deploy-app/Dockerfile
+    web: Dockerfile
 run:
-  web: sh deploy-app/setup.sh && streamlit run streamlit-app.py
+  web: sh setup.sh && streamlit run streamlit-app.py
