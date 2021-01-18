@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
 COPY . .
-RUN make all_dcker
+RUN make get_tiny_yolo_v3_weights
 
 
 
