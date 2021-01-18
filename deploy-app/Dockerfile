@@ -1,7 +1,4 @@
-FROM heroku/heroku:20
-
-# install pip
-RUN apt-get update && apt-get install -y python3-pip
+FROM python:3.6-slim-stretch
 
 ENV APP_HOME /app/
 WORKDIR ${APP_HOME}
@@ -11,7 +8,7 @@ COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
 COPY . .
-RUN make get_tiny_yolo_v3_weights
+RUN make get_yolo_v3_weights 
 
 
 
