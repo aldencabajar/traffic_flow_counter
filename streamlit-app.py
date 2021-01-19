@@ -14,30 +14,59 @@ wt_file = 'data/yolov3.weights'
 tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
 
+
+
+
 def main():
+
+    hide_streamlit_widgets()
+
     st.markdown('# Vehicle Counter') 
     st.markdown('Upload a video file to track and count vehicles.')
     sidebar_options()
 
+
     upload = st.empty()
     upload.beta_expander(label = '', expanded = True)
 
+    start_button = st.empty()
+    stop_button = st.empty()
+
     with upload:
         f = st.file_uploader('Upload Video file (mpeg format)')
-
-
-
 
     if f is not None:
         tfile  = tempfile.NamedTemporaryFile(delete = False)
         tfile.write(f.read())
         upload.empty()
         vf = cv2.VideoCapture(tfile.name)
+        start = start_button.button("start")
+
+        if start:
+            start_button.empty()
+            stop = stop_button.button("stop")
+            
+            if stop:
+                st.stop()
+            loop_over_frames(vf)
 
 
-        loop_over_frames(vf)
+
 
         
+def hide_streamlit_widgets():
+    """
+    hides widgets that are displayed by streamlit when running
+    """
+    hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            </style>
+            """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True) 
+
+
 
 
 
