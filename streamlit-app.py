@@ -8,8 +8,6 @@ import traffic_counter as tc
 import cv2 
 import time
 import SessionState
-from multiprocessing import Process
-from streamlit import caching
 from random import randint
 import copy
 
@@ -19,9 +17,6 @@ wt_file = 'data/yolov3.weights'
 # set network
 tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
-
-
-
 
 def main():
 
@@ -92,7 +87,7 @@ def loop_over_frames(vf, stop):
     bar = st.progress(frame_counter)
     stframe = st.empty()
     start = time.time()
-    
+
     while vf.isOpened():
         if stop:
             break
