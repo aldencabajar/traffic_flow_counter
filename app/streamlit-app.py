@@ -27,7 +27,14 @@ def main():
     hide_streamlit_widgets()
     st.markdown('# Vehicle Counter') 
     st.markdown('Upload a video file to track and count vehicles.')
-    sidebar_options()
+    st.sidebar.markdown('## Parameters')
+    conf = st.sidebar.slider('Model Confidence', value = 70)
+    nms = st.sidebar.slider('Non-Maximum Suppresion Threshold', value = 50)
+
+    #set model confidence and nms threshold 
+    obj_detector.nms_threshold = nms / 100
+    obj_detector.confidence = conf / 100 
+
 
     upload = st.empty()
     start_button = st.empty()
@@ -56,6 +63,7 @@ def main():
             state.upload_key = str(randint(1000, int(1e6)))
             print(state.upload_key)
             loop_over_frames(vf, stop)
+            vf.close()
 
 def hide_streamlit_widgets():
     """
@@ -116,9 +124,6 @@ def loop_over_frames(vf, stop):
 
 
 
-def sidebar_options():
-    st.sidebar.markdown('## Parameters')
-    st.sidebar.slider('Model Confidence')
 
 main()
 
