@@ -9,6 +9,7 @@ import cv2
 import time
 import SessionState
 from random import randint
+from streamlit import caching
 import copy
 
 
@@ -21,8 +22,9 @@ obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshol
 def main():
 
     state = SessionState.get(upload_key = None)
-    hide_streamlit_widgets()
+    caching.clear_cache()
 
+    hide_streamlit_widgets()
     st.markdown('# Vehicle Counter') 
     st.markdown('Upload a video file to track and count vehicles.')
     sidebar_options()
