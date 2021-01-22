@@ -7,7 +7,7 @@ sys.path.append(os.getcwd())
 import traffic_counter as tc
 import cv2 
 import time
-import SessionState
+import utils.SessionState as SessionState
 from random import randint
 from streamlit import caching
 import copy
@@ -121,9 +121,6 @@ def loop_over_frames(vf, stop):
 
         frm = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         stframe.image(frm, width = 720)
-
-
-
 
 main()
 
