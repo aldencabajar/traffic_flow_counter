@@ -61,7 +61,7 @@ class ObjectDetector:
                     class_lst.append(class_id)
                     confidences.append(float(conf))
         #apply non maximum suppression which outputs the final predictions 
-        idx = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence, self.nms_threshold).flatten()
+        idx = np.array(cv2.dnn.NMSBoxes(boxes, confidences, self.confidence, self.nms_threshold)).flatten()
         return [LABELS[class_lst[i]] for i in idx], [boxes[i] for i in idx], [confidences[i] for i in idx]
 
 

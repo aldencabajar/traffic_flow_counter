@@ -63,7 +63,7 @@ def main():
             state.upload_key = str(randint(1000, int(1e6)))
             print(state.upload_key)
             loop_over_frames(vf, stop)
-            vf.close()
+            vf.release()
 
 def hide_streamlit_widgets():
     """
