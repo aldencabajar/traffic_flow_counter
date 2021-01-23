@@ -1,0 +1,6 @@
+numpy==1.19.5
+opencv-python-headless==4.5.1.48
+palettable==3.3.0
+rq==1.7.0
+redis==3.5.3
+tqdm==4.56.0

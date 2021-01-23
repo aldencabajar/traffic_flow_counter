@@ -1,7 +1,7 @@
 build:
   docker:
     web: Dockerfile
-    worker: Dockerfile
+    worker: app/Dockerfile
 run:
   web: sh setup.sh && streamlit run app/streamlit-app.py
-  worker: python app/worker.py
+  worker: python worker.py

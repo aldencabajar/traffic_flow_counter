@@ -8,7 +8,10 @@ import tqdm
 import copy
 
 # load labels from COCO dataset
-LABELS = open('darknet/data/coco.names').read().strip().split('\n')
+try:
+    LABELS = open('coco.names').read().strip().split('\n')
+except:
+    LABELS = open('darknet/data/coco.names').read().strip().split('\n')
 
 class ObjectDetector:
     def __init__(self, weights, config, confidence, nms_threshold):
