@@ -11,8 +11,9 @@ from random import randint
 from streamlit import caching
 import copy
 from rq import Queue
-from worker import conn, loop_over_frames
+from worker import conn
 import cv2
+from funcs import loop_over_frames
 
 
 
@@ -78,7 +79,8 @@ def main():
                                 args =(frame, frame_counter, start),
                                 result_ttl = 10 
                                 )
-                time.sleep(1.5)
+                time.sleep(10)
+                print(job.result)
                 end = time.time()
                 img, new_car_count, frame_counter = job.result
                 fps_measurement = frame_counter/(end - start)
