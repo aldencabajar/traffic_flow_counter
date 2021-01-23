@@ -5,19 +5,20 @@ import os
 import tempfile
 sys.path.append(os.getcwd())
 import traffic_counter as tc
-import cv2 
 import time
 import utils.SessionState as SessionState
 from random import randint
 from streamlit import caching
 import copy
+from rq import Queue
+from worker import conn
+import cv2
+from app_main import loop_over_frames
 
 
-config =  'darknet/cfg/yolov3.cfg'
-wt_file = 'data/yolov3.weights'
-# set network
-tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
-obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
+
+
+q = Queue(connection = conn)
 
 def main():
 
@@ -32,8 +33,8 @@ def main():
     nms = st.sidebar.slider('Non-Maximum Suppresion Threshold', value = 50)
 
     #set model confidence and nms threshold 
-    obj_detector.nms_threshold = nms / 100
-    obj_detector.confidence = conf / 100 
+    #obj_detector.nms_threshold = nms / 100
+    #obj_detector.confidence = conf / 100 
 
 
     upload = st.empty()
@@ -50,20 +51,43 @@ def main():
         vf = cv2.VideoCapture(tfile.name)
         start = start_button.button("start")
 
+        # boolean to note end of file
+        eof = False 
 
-        # add start and stop buttons to interupt processing
+        # add start and stop buttons to interrupt processing
         if start:
             start_button.empty()
             stop = stop_button.button("stop")
             start = False
             # close out temp files
-            f.close()
             tfile.close()
             #update upload key
             state.upload_key = str(randint(1000, int(1e6)))
             print(state.upload_key)
-            loop_over_frames(vf, stop)
-            vf.close()
+            frame_counter = 0
+            new_car_count_txt = st.empty()
+            fps_meas_txt = st.empty()
+            #bar = st.progress(frame_counter)
+            stframe = st.empty()
+            start = time.time()
+
+            while not eof:
+                if stop:
+                    break
+                ret, frame = vf.read()
+                job = q.enqueue(loop_over_frames, 
+                                args =(frame, frame_counter, start)
+                                )
+                time.sleep(10)
+                img, new_car_count, fps_measurement, frame_counter = job.result
+
+                #print(loop_over_frames(frame, frame_counter, start))
+                new_car_count_txt.markdown(f'**Total car count:** {new_car_count}')
+                fps_meas_txt.markdown(f'**Frames per second:** {fps_measurement:.2f}')
+                stframe.image(img, width = 720)
+
+
+
 
 def hide_streamlit_widgets():
     """
@@ -77,50 +101,6 @@ def hide_streamlit_widgets():
             """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True) 
 
-def loop_over_frames(vf, stop): 
-
-    # Main loop to process every frame and predict cars
-    # get video attributes 
-    try:
-        num_frames = int(vf.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = int(vf.get(cv2.CAP_PROP_FPS)) 
-        print('Total number of frames to be processed:', num_frames,
-        '\nFrame rate (frames per second):', fps)
-    except:
-        print('We cannot determine number of frames and FPS!')
-
-
-    frame_counter = 0
-
-    new_car_count_txt = st.empty()
-    fps_meas_txt = st.empty()
-    bar = st.progress(frame_counter)
-    stframe = st.empty()
-    start = time.time()
-
-    while vf.isOpened():
-        if stop:
-            break
-        ret, frame = vf.read()
-        # if frame is read correctly ret is True
-        if not ret:
-            print("Can't receive frame (stream end?). Exiting ...")
-            break
-        labels, current_boxes, confidences = obj_detector.ForwardPassOutput(frame)
-        frame = tc.drawBoxes(frame, labels, current_boxes, confidences) 
-        new_car_count = tracker.TrackCars(current_boxes)
-        new_car_count_txt.markdown(f'**Total car count:** {new_car_count}')
-
-        end = time.time()
-
-        frame_counter += 1
-        fps_measurement = frame_counter/(end - start)
-        fps_meas_txt.markdown(f'**Frames per second:** {fps_measurement:.2f}')
-
-        bar.progress(frame_counter/num_frames)
-
-        frm = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        stframe.image(frm, width = 720)
 
 main()
 
