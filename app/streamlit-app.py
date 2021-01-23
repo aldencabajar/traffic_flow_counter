@@ -11,9 +11,8 @@ from random import randint
 from streamlit import caching
 import copy
 from rq import Queue
-from worker import conn
+from worker import conn, loop_over_frames
 import cv2
-from app_main import loop_over_frames
 
 
 
@@ -76,10 +75,13 @@ def main():
                     break
                 ret, frame = vf.read()
                 job = q.enqueue(loop_over_frames, 
-                                args =(frame, frame_counter, start)
+                                args =(frame, frame_counter, start),
+                                result_ttl = 10 
                                 )
-                time.sleep(10)
-                img, new_car_count, fps_measurement, frame_counter = job.result
+                time.sleep(1.5)
+                end = time.time()
+                img, new_car_count, frame_counter = job.result
+                fps_measurement = frame_counter/(end - start)
 
                 #print(loop_over_frames(frame, frame_counter, start))
                 new_car_count_txt.markdown(f'**Total car count:** {new_car_count}')
