@@ -11,6 +11,7 @@ import utils.SessionState as SessionState
 from random import randint
 from streamlit import caching
 import copy
+from components.custom_slider import custom_slider
 
 
 config =  'darknet/cfg/yolov3.cfg'
@@ -21,20 +22,27 @@ obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshol
 
 def main():
 
-    state = SessionState.get(upload_key = None)
+    state = SessionState.get(upload_key = None, enabled = True, start = False)
     caching.clear_cache()
 
     hide_streamlit_widgets()
     st.markdown('# Vehicle Counter') 
-    st.markdown('Upload a video file to track and count vehicles.')
-    st.sidebar.markdown('## Parameters')
-    conf = st.sidebar.slider('Model Confidence', value = 70)
-    nms = st.sidebar.slider('Non-Maximum Suppresion Threshold', value = 50)
+    st.markdown('Upload a video file to track and count vehicles. Don\'t forget to change parameters to tune the model!')
+    with st.sidebar:
+        st.markdown('## Parameters')
+        conf = custom_slider("Model Confidence", 
+                            minVal = 0, maxVal = 100, value= 70, enabled = state.enabled,
+                            key = 'conf')
+        nms = custom_slider('Non-Maximum Suppresion Threshold', 
+                            minVal = 0, maxVal = 100, value= 50, enabled = state.enabled,
+                            key = 'nms')
+
 
     #set model confidence and nms threshold 
     obj_detector.nms_threshold = nms / 100
     obj_detector.confidence = conf / 100 
-
+    print(obj_detector.nms_threshold)
+    print(obj_detector.confidence)
 
     upload = st.empty()
     start_button = st.empty()
@@ -45,6 +53,7 @@ def main():
     if f is not None:
         tfile  = tempfile.NamedTemporaryFile(delete = True)
         tfile.write(f.read())
+        state.enabled = False
 
         upload.empty()
         vf = cv2.VideoCapture(tfile.name)
@@ -55,12 +64,13 @@ def main():
         if start:
             start_button.empty()
             stop = stop_button.button("stop")
-            start = False
+            state.start = False
             # close out temp files
             f.close()
             tfile.close()
             #update upload key
             state.upload_key = str(randint(1000, int(1e6)))
+            state.enabled = True
             print(state.upload_key)
             loop_over_frames(vf, stop)
             vf.release()
