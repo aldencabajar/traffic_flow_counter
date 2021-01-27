@@ -15,11 +15,22 @@ import copy
 
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
-# set network
-tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
-obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
+
+@st.cache(
+    hash_funcs={
+        st.delta_generator.DeltaGenerator: lambda x: None,
+        "_regex.Pattern": lambda x: None,
+    },
+    allow_output_mutation=True,
+)
+def load_obj_detector(config, wt_file):
+    obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
+
+    return obj_detector
 
 def main():
+    tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
+    obj_detector = load_obj_detector(config, wt_file)
 
     state = SessionState.get(upload_key = None)
     caching.clear_cache()
@@ -62,7 +73,7 @@ def main():
             #update upload key
             state.upload_key = str(randint(1000, int(1e6)))
             print(state.upload_key)
-            loop_over_frames(vf, stop)
+            loop_over_frames(vf, tracker, obj_detector, stop)
             vf.release()
 
 def hide_streamlit_widgets():
@@ -77,7 +88,7 @@ def hide_streamlit_widgets():
             """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True) 
 
-def loop_over_frames(vf, stop): 
+def loop_over_frames(vf, tracker, obj_detector, stop): 
 
     # Main loop to process every frame and predict cars
     # get video attributes 
