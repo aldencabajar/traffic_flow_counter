@@ -6,6 +6,8 @@ import {
 } from "streamlit-component-lib";
 import React, {useEffect, useState } from "react";
 import { Slider } from 'baseui/slider';
+import { ThemeProvider, styled} from "baseui";
+import { useStyletron } from "styletron-react";
 
 interface pythonArgs {
   label: string
@@ -22,12 +24,15 @@ const CustomSlider = (props: ComponentProps) => {
   // This ensures typing validation for received props from Python
   const {label, minVal, maxVal, initialValue, enabled} : pythonArgs = props.args 
   const [value, setValue] = useState([initialValue])
+  const [css] = useStyletron()
 
   useEffect(() => Streamlit.setFrameHeight())
 
+
+
   return (
     <>
-      {label}
+      <p>{label}</p>
       <Slider
         disabled={!enabled}
         value={value}
@@ -38,6 +43,35 @@ const CustomSlider = (props: ComponentProps) => {
         }}
         min={minVal}
         max={maxVal}
+        overrides= {{
+          Thumb: {
+            style: ({ $theme }) => ({
+              backgroundColor: $theme.colors.negative400,
+              height: '14px',
+              width: '14px'
+              
+            })
+          },
+          InnerTrack: {
+              style: ({  $theme, $isDragged}) => ({
+                height: "2px",
+
+              })
+            },
+          Root: { style: ({ $theme }) => ({
+              backgroundColor: $theme.colors.primary50,
+              positive600: $theme.colors.negative400
+            })
+          },
+          Track: {
+            style: ({ $theme }) => ({
+              height: "4px", 
+            })
+          
+
+            }
+
+        }}
       />
     </>
   )
