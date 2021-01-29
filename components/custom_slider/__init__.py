@@ -5,14 +5,18 @@ _component_func = components.declare_component(
     "custom_slider",
     url="http://localhost:3001",
 )
-_RELEASE = True
+_RELEASE = False 
 
+#def custom_slider(label: str, minVal: int, maxVal: int,
+#enabled: bool, value: int = 0, key = None) ->int:
+#    component_value = _component_func(label =label, minVal = minVal, maxVal = maxVal, 
+#    initialValue = [value], key=key, default = [value], enabled= enabled)
+#    return component_value[0]
 
-def custom_slider(label: str, minVal: int, maxVal: int,
-enabled: bool, value: int = 0, key = None) ->int:
-    component_value = _component_func(label =label, minVal = minVal, maxVal = maxVal, 
-    initialValue = [value], key=key, default = [value], enabled= enabled)
-    return component_value[0]
+def custom_slider(label: str, minVal: int, maxVal: int, enabled: bool,  
+                    InitialValue: int = 0, key = None):
+    return(_component_func(label = label, minVal = minVal, maxVal = maxVal,
+                              enabled = enabled, InitialValue= InitialValue, key = key))
 
 
 # Add some test code to play with the component while it's in development.
@@ -27,6 +31,10 @@ if not _RELEASE:
     # print its output value.
     with st.sidebar:
         st.header("Parameters")
-        custom_slider("test slider", minVal = 0, maxVal = 100, key = 's1')
+        val = custom_slider(label = "Model Confidence", minVal = 0, maxVal = 100, 
+        InitialValue = 70, enabled = True, key=2)
+        print(val)
+        custom_slider(label = "Overlap threshold", minVal = 0, maxVal = 100,
+         InitialValue = 50, enabled= True, key=1)
 
 

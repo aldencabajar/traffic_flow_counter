@@ -1,80 +1,89 @@
+import { Slider, withStyles, styled } from "@material-ui/core"
 import { 
   Streamlit,
   StreamlitComponentBase,
-  ComponentProps,
   withStreamlitConnection
 } from "streamlit-component-lib";
-import React, {useEffect, useState } from "react";
-import { Slider } from 'baseui/slider';
-import { ThemeProvider, styled} from "baseui";
-import { useStyletron } from "styletron-react";
+import React, { ReactNode } from "react";
 
 interface pythonArgs {
   label: string
   minVal: number
   maxVal: number
-  initialValue: number
+  InitialValue: number
   enabled: boolean
 
 
 }
 
-const CustomSlider = (props: ComponentProps) => {
-  // Destructure using Typescript interface
-  // This ensures typing validation for received props from Python
-  const {label, minVal, maxVal, initialValue, enabled} : pythonArgs = props.args 
-  const [value, setValue] = useState([initialValue])
-  const [css] = useStyletron()
+const styles = {
+  color: "#f0f2f6",
+  stPrimary: "#f63366",
+};
 
-  useEffect(() => Streamlit.setFrameHeight())
+const StyledSlider = withStyles({
+  root: {
+    color: styles.stPrimary,
+    background: styles.color,
+    marginTop: 15,
+    marginLeft: 15,
+    width: 265,
+
+  },
+  thumb: {
+    height: 24,
+    width: 24,
+    backgroundColor: '#fff',
+    border: '2px solid currentColor',
+    marginTop: -8,
+    marginLeft: -12,
+    '&:focus,&:hover,&$active': {
+      boxShadow: 'inherit',
+    },
+  },
+  active: {},
+  valueLabel: {
+    left: 'calc(-50% + 4px)',
+  },
+  track: {
+    height: 3,
+    borderRadius: 3,
+  },
+  rail: {
+    height: 3,
+    borderRadius: 4,
+  },
+})(Slider);
 
 
+class CustomSlider extends StreamlitComponentBase {
+  public render = (): ReactNode => {
 
-  return (
-    <>
-      <p>{label}</p>
-      <Slider
-        disabled={!enabled}
-        value={value}
-        onChange={({ value }) => value && setValue(value)}
-        onFinalChange={({ value }) => {
-          Streamlit.setComponentValue(value)
-          console.log(value)
-        }}
-        min={minVal}
+    const div_style = {
+      background: styles.color, 
+      height: '85px',
+    }
+    const {label, minVal, maxVal, InitialValue, enabled} : pythonArgs = this.props.args 
+
+    return(
+      <div style={div_style}>
+        {label} 
+        <StyledSlider
+        valueLabelDisplay="auto" 
         max={maxVal}
-        overrides= {{
-          Thumb: {
-            style: ({ $theme }) => ({
-              backgroundColor: $theme.colors.negative400,
-              height: '14px',
-              width: '14px'
-              
-            })
-          },
-          InnerTrack: {
-              style: ({  $theme, $isDragged}) => ({
-                height: "2px",
-
-              })
-            },
-          Root: { style: ({ $theme }) => ({
-              backgroundColor: $theme.colors.primary50,
-              positive600: $theme.colors.negative400
-            })
-          },
-          Track: {
-            style: ({ $theme }) => ({
-              height: "4px", 
-            })
-          
-
-            }
-
+        min={minVal}
+        defaultValue={InitialValue} 
+        onChangeCommitted={(event: any, value : any) => {
+          const value_ = Number(value)
+          Streamlit.setComponentValue(value_)
         }}
-      />
-    </>
-  )
+        disabled={!enabled}
+        />
+      </div>
+    )
+  }
+
 }
+
 
 export default withStreamlitConnection(CustomSlider)

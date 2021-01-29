@@ -11,11 +11,7 @@ const engine = new Styletron()
 // Wrap your CustomSlider with the baseui them
 ReactDOM.render(
   <React.StrictMode>
-    <StyletronProvider value={engine}>
-      <ThemeProvider theme={LightTheme}>
-          <CustomSlider />
-      </ThemeProvider>
-    </StyletronProvider>
+    <CustomSlider />
   </React.StrictMode>,
   document.getElementById("root")
 )
