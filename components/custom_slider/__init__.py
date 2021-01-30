@@ -1,17 +1,25 @@
 import os
 import streamlit.components.v1 as components
 
-_component_func = components.declare_component(
-    "custom_slider",
-    url="http://localhost:3001",
-)
-_RELEASE = False 
+root_dir = os.path.dirname(os.path.abspath(__file__))
+build_dir = os.path.join(root_dir, 'frontend/build')
 
-#def custom_slider(label: str, minVal: int, maxVal: int,
-#enabled: bool, value: int = 0, key = None) ->int:
-#    component_value = _component_func(label =label, minVal = minVal, maxVal = maxVal, 
-#    initialValue = [value], key=key, default = [value], enabled= enabled)
-#    return component_value[0]
+# Toggle between dev and production mode
+_RELEASE = True
+
+if _RELEASE:
+    _component_func = components.declare_component(
+        "custom_slider",
+        path = build_dir
+    )
+
+
+else:
+    _component_func = components.declare_component(
+        "custom_slider",
+        url="http://localhost:3001",
+    )
+
 
 def custom_slider(label: str, minVal: int, maxVal: int, enabled: bool,  
                     InitialValue: int = 0, key = None):
@@ -27,14 +35,12 @@ if not _RELEASE:
 
     st.subheader("Test components")
 
-    # Create an instance of our component with a constant `name` arg, and
-    # print its output value.
     with st.sidebar:
         st.header("Parameters")
         val = custom_slider(label = "Model Confidence", minVal = 0, maxVal = 100, 
         InitialValue = 70, enabled = True, key=2)
         print(val)
         custom_slider(label = "Overlap threshold", minVal = 0, maxVal = 100,
-         InitialValue = 50, enabled= True, key=1)
+         InitialValue = 50, enabled= False, key=1)
 
 

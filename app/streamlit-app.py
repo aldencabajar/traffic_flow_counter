@@ -10,15 +10,19 @@ import time
 import utils.SessionState as SessionState
 from random import randint
 from streamlit import caching
+import streamlit.report_thread as ReportThread 
+from streamlit.server.server import Server
 import copy
 from components.custom_slider import custom_slider
 
 
+# define the weights to be used along with its config file
 config =  'darknet/cfg/yolov3.cfg'
 wt_file = 'data/yolov3.weights'
-# set network
-#tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
-#obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
+
+# define recommend values for model confidence and nms suppression 
+def_values ={'conf': 70, 'nms': 50} 
+keys = ['conf', 'nms']
 
 @st.cache(
     hash_funcs={
@@ -28,75 +32,114 @@ wt_file = 'data/yolov3.weights'
     allow_output_mutation=True,
 )
 def load_obj_detector(config, wt_file):
-    obj_detector = tc.ObjectDetector(wt_file, config, confidence = 0.7, nms_threshold=0.5)
+    """
+    wrapper func to load and cache object detector 
+    """
+    obj_detector = tc.ObjectDetector(wt_file, config, confidence = def_values['conf']/100,
+     nms_threshold=def_values['nms']/100)
 
     return obj_detector
     
+    
 
-def parameter_sliders(key, enabled = True):
+def parameter_sliders(key, enabled = True, value = None):
     conf = custom_slider("Model Confidence", 
-                        minVal = 0, maxVal = 100, value= 70, enabled = enabled,
+                        minVal = 0, maxVal = 100, InitialValue= value[0], enabled = enabled,
                         key = key[0])
-    nms = custom_slider('Non-Maximum Suppresion Threshold', 
-                        minVal = 0, maxVal = 100, value= 50, enabled = enabled,
+    nms = custom_slider('Overlapping Threshold', 
+                        minVal = 0, maxVal = 100, InitialValue= value[1], enabled = enabled,
                         key = key[1])
 
         
     return(conf, nms)
 
 
+def trigger_rerun():
+    """
+    mechanism in place to force resets and update widget states
+    """
+    session_infos = Server.get_current()._session_info_by_id.values() 
+    for session_info in session_infos:
+        this_session = session_info.session
+    this_session.request_rerun()
+
 def main():
-    keys = ['conf', 'nms']
+    st.set_page_config(page_title = "Traffic Flow Counter", 
+    page_icon=":vertical_traffic_light:")
 
     obj_detector = load_obj_detector(config, wt_file)
     tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 
-    state = SessionState.get(upload_key = None, enabled = True, start = False)
+    state = SessionState.get(upload_key = None, enabled = True, 
+    start = False, conf = 70, nms = 50, run = False)
     hide_streamlit_widgets()
-    st.markdown('# Vehicle Counter') 
-    st.markdown('Upload a video file to track and count vehicles. Don\'t forget to change parameters to tune the model!')
-    with st.sidebar:
-        st.markdown('## Parameters')
-        conf, nms = parameter_sliders(keys, state.enabled)
-        st.slider(label = "test")
+    """
+    #  Traffic Flow Counter :blue_car:  :red_car:
+    Upload a video file to track and count vehicles. Don't forget to change parameters to tune the model!
 
+    #### Features to be added in the future:
+    + speed measurement
+    + traffic density
+    + vehicle type distribution
+    """
+
+    with st.sidebar:
+        """
+        ## :floppy_disk: Parameters  
+
+        """
+        state.conf, state.nms = parameter_sliders(
+            keys, state.enabled, value = [state.conf, state.nms])
+        
+        st.text("")
+        st.text("")
+        st.text("")
+
+        """
+        #### :desktop_computer: [Source code in Github](https://github.com/aldencabajar/traffic_flow_counter)
+
+        """
 
     #set model confidence and nms threshold 
-    obj_detector.nms_threshold = nms / 100
-    obj_detector.confidence = conf / 100 
-    print(obj_detector.nms_threshold)
-    print(obj_detector.confidence)
+    if (state.conf is not None):
+        obj_detector.confidence = state.conf/ 100
+    if (state.nms is not None):
+        obj_detector.nms_threshold = state.nms/ 100 
+
+
 
     upload = st.empty()
     start_button = st.empty()
     stop_button = st.empty()
 
     with upload:
-        f = st.file_uploader('Upload Video file (mpeg format)', key = state.upload_key)
+        f = st.file_uploader('Upload Video file (mpeg/mp4 format)', key = state.upload_key)
     if f is not None:
         tfile  = tempfile.NamedTemporaryFile(delete = True)
         tfile.write(f.read())
 
         upload.empty()
         vf = cv2.VideoCapture(tfile.name)
-        start = start_button.button("start")
-        state.enabled = False
 
-
-            
-
-
-        # add start and stop buttons to interupt processing
-        if start:
+        if not state.run:
+            start = start_button.button("start")
+            state.start = start
+        
+        if state.start:
             start_button.empty()
-            tfile.close()
-            f.close()
-            state.upload_key = str(randint(1000, int(1e6)))
-            state.enabled = True 
-            ProcessFrames(vf, tracker, obj_detector)
+            #state.upload_key = str(randint(1000, int(1e6)))
+            state.enabled = False
+            if state.run:
+                tfile.close()
+                f.close()
+                state.upload_key = str(randint(1000, int(1e6)))
+                state.enabled = True
+                state.run = False
+                ProcessFrames(vf, tracker, obj_detector, stop_button)
+            else:
+                state.run = True
+                trigger_rerun()
 
-
-            
 
 
 def hide_streamlit_widgets():
@@ -111,10 +154,15 @@ def hide_streamlit_widgets():
             """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True) 
 
-def ProcessFrames(vf, tracker, obj_detector): 
+def ProcessFrames(vf, tracker, obj_detector,stop): 
+    """
+        main loop for processing video file:
+        Params
+        vf = VideoCapture Object
+        tracker = Tracker Object that was instantiated 
+        obj_detector = Object detector (model and some properties) 
+    """
 
-    # Main loop to process every frame and predict cars
-    # get video attributes 
     try:
         num_frames = int(vf.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = int(vf.get(cv2.CAP_PROP_FPS)) 
@@ -125,7 +173,7 @@ def ProcessFrames(vf, tracker, obj_detector):
 
 
     frame_counter = 0
-    stop = stop_button.button("stop")
+    _stop = stop.button("stop")
     new_car_count_txt = st.empty()
     fps_meas_txt = st.empty()
     bar = st.progress(frame_counter)
@@ -133,8 +181,10 @@ def ProcessFrames(vf, tracker, obj_detector):
     start = time.time()
 
     while vf.isOpened():
-        ret, frame = vf.read()
         # if frame is read correctly ret is True
+        ret, frame = vf.read()
+        if _stop:
+            break
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
         labels, current_boxes, confidences = obj_detector.ForwardPassOutput(frame)
@@ -152,9 +202,5 @@ def ProcessFrames(vf, tracker, obj_detector):
         frm = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         stframe.image(frm, width = 720)
 
+
 main()
-
-
-
-
-
