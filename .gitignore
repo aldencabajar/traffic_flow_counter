@@ -148,3 +148,7 @@ cython_debug/
 # pdf files
 **/*.pdf
 .DS_Store
+
+# node modules
+**/node_modules/
+
