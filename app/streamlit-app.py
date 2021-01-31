@@ -50,9 +50,8 @@ def parameter_sliders(key, enabled = True, value = None):
                         minVal = 0, maxVal = 100, InitialValue= value[1], enabled = enabled,
                         key = key[1])
 
-        
-    return(conf, nms)
 
+    return(conf, nms)
 
 def trigger_rerun():
     """
@@ -63,6 +62,7 @@ def trigger_rerun():
         this_session = session_info.session
     this_session.request_rerun()
 
+
 def main():
     st.set_page_config(page_title = "Traffic Flow Counter", 
     page_icon=":vertical_traffic_light:")
@@ -71,17 +71,19 @@ def main():
     tracker = tc.CarsInFrameTracker(num_previous_frames = 10, frame_shape = (720, 1080))
 
     state = SessionState.get(upload_key = None, enabled = True, 
-    start = False, conf = 70, nms = 50, run = False)
+    start = False, conf = 70, nms = 50, run = False, vf_init = False, vf = None)
     hide_streamlit_widgets()
     """
     #  Traffic Flow Counter :blue_car:  :red_car:
     Upload a video file to track and count vehicles. Don't forget to change parameters to tune the model!
 
-    #### Features to be added in the future:
+    *Features to be added in the future:*
     + speed measurement
     + traffic density
-    + vehicle type distribution
+    + vehicle type distribution  
     """
+    st.text(" ")
+    st.text(" ")
 
     with st.sidebar:
         """
@@ -91,14 +93,19 @@ def main():
         state.conf, state.nms = parameter_sliders(
             keys, state.enabled, value = [state.conf, state.nms])
         
-        st.text("")
-        st.text("")
-        st.text("")
+        st.text(" ")
+        st.text(" ")
+        st.text(" ")
 
         """
         #### :desktop_computer: [Source code in Github](https://github.com/aldencabajar/traffic_flow_counter)
 
         """
+    print("enabled slider:", state.enabled)
+    print("start boolean:", state.start)
+    print("run boolean:", state.run)
+    print("vf init:", state.vf_init)
+    print("vf obj:" ,state.vf)
 
     #set model confidence and nms threshold 
     if (state.conf is not None):
@@ -107,39 +114,59 @@ def main():
         obj_detector.nms_threshold = state.nms/ 100 
 
 
+    ##  Allocate a demo button 
+    demo_button = st.empty()
+    txt = st.empty()
+    _demo = demo_button.button("Try the Demo!") 
+    txt.markdown("**OR**")
+    
 
     upload = st.empty()
     start_button = st.empty()
     stop_button = st.empty()
 
     with upload:
-        f = st.file_uploader('Upload Video file (mpeg/mp4 format)', key = state.upload_key)
-    if f is not None:
-        tfile  = tempfile.NamedTemporaryFile(delete = True)
-        tfile.write(f.read())
+        f = st.file_uploader('Upload Video file (mpeg/mp4 format)', 
+        key = state.upload_key)
 
+    if not state.start:
+        if _demo:
+            state.vf = cv2.VideoCapture("data/traffic_flow_counter_demo.mp4")
+            state.vf_init = True
+        
+        elif f is not None:
+            tfile  = tempfile.NamedTemporaryFile(delete = True)
+            tfile.write(f.read())
+            state.vf = cv2.VideoCapture(tfile.name)
+            state.vf_init = True
+
+
+    if state.vf_init:
         upload.empty()
-        vf = cv2.VideoCapture(tfile.name)
+        txt.empty()
+        demo_button.empty()
 
         if not state.run:
             start = start_button.button("start")
             state.start = start
-        
+
         if state.start:
-            start_button.empty()
-            #state.upload_key = str(randint(1000, int(1e6)))
             state.enabled = False
             if state.run:
-                tfile.close()
-                f.close()
+                start_button.empty()
+                #tfile.close()
+                #f.close()
                 state.upload_key = str(randint(1000, int(1e6)))
+                # refresh widgets 
                 state.enabled = True
                 state.run = False
-                ProcessFrames(vf, tracker, obj_detector, stop_button)
+                state.start = False
+                state.vf_init = False 
+
+                ProcessFrames(state.vf, tracker, obj_detector, stop_button)
             else:
                 state.run = True
                 trigger_rerun()
-
 
 
 def hide_streamlit_widgets():
@@ -183,8 +210,6 @@ def ProcessFrames(vf, tracker, obj_detector,stop):
     while vf.isOpened():
         # if frame is read correctly ret is True
         ret, frame = vf.read()
-        if _stop:
-            break
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
         labels, current_boxes, confidences = obj_detector.ForwardPassOutput(frame)
@@ -201,6 +226,5 @@ def ProcessFrames(vf, tracker, obj_detector,stop):
 
         frm = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         stframe.image(frm, width = 720)
-
 
 main()
