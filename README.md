@@ -7,20 +7,27 @@ Hello everyone! The following code will be a current work-in-progress app for tr
 To run the app locally, install the necessary python packages by: 
 
 ```python
-pip install requirements.txt
+pip install -r requirements.txt
 ```
-For better reproducibility, make sure open up a python environment using `virtualenv` or any of your favorite python environment packages. 
+For better reproducibility, make sure to open up a python environment using `virtualenv` or any of your favorite python environment packages. 
 
 The app contains a custom slider. To use it, make sure you have `npm` installed and then run the following commands.
-```sh
+```bash
 cd components/custom_slider/frontend/
-npm run build
+npm install 
 ```
+Afterwards, run `npm run build`
+
 This should recreate the build package for the custom slider. 
 
-Afterwards run the app!
+pull the necessary models and data needed using
 ```
-streamlit run app app/streamlit-app.py
+bash dependencies.sh
+```
+
+Run the app!
+```
+streamlit run app/streamlit-app.py
 ```
 
 ## Future Developments
