@@ -20,9 +20,9 @@ Afterwards, run `npm run build`
 
 This should recreate the build package for the custom slider. 
 
-pull the necessary models and data needed using
+pull the necessary models and data by running: 
 ```
-bash dependencies.sh
+make dependencies 
 ```
 
 Run the app!
